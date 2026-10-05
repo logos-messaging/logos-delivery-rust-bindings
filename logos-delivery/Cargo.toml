@@ -1,0 +1,24 @@
+[package]
+name = "logos-delivery"
+version = "0.1.0"
+edition = "2021"
+description = "Async (tokio) Rust client for Logos Delivery, with reliable channels"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/logos-messaging/logos-delivery-rust-bindings"
+links = "logosdelivery"
+
+[dependencies]
+base64 = "0.22"
+ciborium = "0.2"
+flume = { version = "0.11", default-features = false, features = ["async"] }
+futures-core = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["sync", "time", "rt"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tracing = "0.1"
+
+[dev-dependencies]
+serial_test = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

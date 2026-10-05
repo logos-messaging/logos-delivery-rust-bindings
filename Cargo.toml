@@ -3,5 +3,6 @@
 members = [
     "waku-bindings",
     "waku-sys",
+    "logos-delivery",
     "examples/basic"
 ]
