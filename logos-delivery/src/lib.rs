@@ -34,6 +34,7 @@ mod events;
 #[rustfmt::skip]
 mod generated;
 mod node;
+mod version;
 
 pub use channel::{Channel, ChannelConfig, ChannelEvent};
 pub use config::DeliveryConfig;

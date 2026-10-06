@@ -23,6 +23,16 @@ Set `LOGOS_DELIVERY_LIB_DIR` to the directory holding `liblogosdelivery`
 passes but linking fails. `LOGOS_DELIVERY_RELOCATABLE=1` links the library in place for
 bundling (iOS always does).
 
+## Library version check
+
+`DeliveryNode::start` first checks (once per process) that the linked library exports
+`logosdelivery_version` and reports a nimble version at least `MIN_LIBRARY_VERSION`
+(recorded by the generator), else it returns `DeliveryError::VersionMismatch`. The git
+hash is not compared, so newer compatible libraries pass; an unparsable version only
+logs a warning. Custom builds can opt out with `DeliveryConfig::skip_version_check()`.
+The nimble version is coarse: it catches pre-CBOR-FFI libraries, not every breaking change
+within one version.
+
 ## Regenerating the FFI layer
 
 `src/generated/` is nim-ffi's Rust output for the logos-delivery revision in

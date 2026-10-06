@@ -113,6 +113,7 @@ impl DeliveryNode {
     /// Creates and starts a node. Returns once it is started, not once it is
     /// connected: see [`DeliveryNode::wait_connected`].
     pub async fn start(config: DeliveryConfig) -> Result<Self> {
+        config.check_version()?;
         let ctx = LogosDeliveryCtx::new_async(config.to_json(), config.timeout())
             .await
             .map_err(DeliveryError::Startup)?;

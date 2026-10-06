@@ -22,4 +22,7 @@ for f in ffi types api; do cp "$src/library/rust_bindings/src/$f.rs" "$out/$f.rs
 # The event API is not generated, and registering a listener needs the raw ctx pointer.
 sed -i.bak 's/^    ptr: \*mut c_void,/    pub(crate) ptr: *mut c_void,/' "$out/api.rs" && rm "$out/api.rs.bak"
 
+# The nimble version is the only runtime signal the library exposes (see src/version.rs).
+sed -n 's/^version *= *"\(.*\)"/\1/p' "$src/logos_delivery.nimble" > "$here/logos-delivery/MIN_LIBRARY_VERSION"
+
 echo "$rev" > "$here/LOGOS_DELIVERY_REV"

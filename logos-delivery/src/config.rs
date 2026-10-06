@@ -11,6 +11,8 @@ pub struct DeliveryConfig {
     discv5_udp_port: Option<u16>,
     log_level: String,
     call_timeout: Duration,
+    skip_version_check: bool,
+    min_library_version: Option<String>,
     extra: Map<String, Value>,
 }
 
@@ -23,6 +25,8 @@ impl Default for DeliveryConfig {
             discv5_udp_port: None,
             log_level: "ERROR".into(),
             call_timeout: Duration::from_secs(60),
+            skip_version_check: false,
+            min_library_version: None,
             extra: Map::new(),
         }
     }
@@ -71,6 +75,26 @@ impl DeliveryConfig {
     pub fn option(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {
         self.extra.insert(key.into(), value.into());
         self
+    }
+
+    /// Skips the startup check that the linked library is at least the version the
+    /// bindings were generated from; for custom builds that report another version.
+    pub fn skip_version_check(mut self) -> Self {
+        self.skip_version_check = true;
+        self
+    }
+
+    #[doc(hidden)]
+    pub fn require_min_library_version(mut self, version: impl Into<String>) -> Self {
+        self.min_library_version = Some(version.into());
+        self
+    }
+
+    pub(crate) fn check_version(&self) -> crate::error::Result<()> {
+        if self.skip_version_check {
+            return Ok(());
+        }
+        crate::version::check_library(self.min_library_version.as_deref())
     }
 
     pub(crate) fn timeout(&self) -> Duration {
