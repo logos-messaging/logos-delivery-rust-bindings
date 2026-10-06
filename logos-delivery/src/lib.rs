@@ -24,9 +24,12 @@
 //! # }
 //! ```
 //!
+//! Synchronous callers use [`blocking::BlockingDeliveryNode`], which owns its own runtime.
+//!
 //! The FFI layer in `generated/` is emitted by nim-ffi; regenerate it with
 //! `scripts/gen-bindings.sh`.
 
+pub mod blocking;
 mod channel;
 mod config;
 mod error;

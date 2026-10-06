@@ -16,6 +16,14 @@ let channel = node.create_channel(ChannelConfig { /* id, content_topic, sender_i
 channel.send(b"hello").await?;                      // ChannelEvent::{Received, Sent, Error, Lost}
 ```
 
+## Blocking API
+
+Synchronous callers (no tokio) use `logos_delivery::blocking::BlockingDeliveryNode`: it owns a
+two-worker runtime and mirrors the node (`start`, `subscribe`, `publish`, `wait_connected`,
+`create_channel`, `shutdown`, ...). `inbound_queue(|msg| Option<T>)` and `events()` give
+bounded `crossbeam_channel::Receiver`s fed off the FFI thread. Its methods, and dropping the
+last clone, panic inside a tokio runtime (like `Runtime::block_on`): use `DeliveryNode` there.
+
 ## Linking
 
 Set `LOGOS_DELIVERY_LIB_DIR` to the directory holding `liblogosdelivery`
