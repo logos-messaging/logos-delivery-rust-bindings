@@ -111,3 +111,17 @@ async fn published_message_reaches_peer() {
     sender.shutdown().await.expect("shutdown");
     receiver.shutdown().await.expect("shutdown");
 }
+
+#[tokio::test]
+#[serial]
+async fn start_waits_for_a_peer_but_does_not_fail_without_one() {
+    let started = std::time::Instant::now();
+    let node = DeliveryNode::start(config(60150).wait_for_connection(Duration::from_secs(2)))
+        .await
+        .expect("a lone node still starts");
+    assert!(
+        started.elapsed() >= Duration::from_secs(2),
+        "start should have waited out the connection timeout"
+    );
+    node.shutdown().await.expect("shutdown");
+}

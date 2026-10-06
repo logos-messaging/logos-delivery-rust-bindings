@@ -5,7 +5,7 @@ with reliable channels. Built on the bindings nim-ffi generates for `liblogosdel
 
 ```rust
 let node = DeliveryNode::start(DeliveryConfig::default().tcp_port(60000)).await?;
-node.wait_connected(Duration::from_secs(30)).await?;
+node.wait_connected(Duration::from_secs(30)).await?; // or DeliveryConfig::wait_for_connection(..) to wait inside start
 
 node.subscribe("/my-app/1/chat/proto").await?;
 let mut messages = Box::pin(node.messages());       // Stream<Item = ReceivedMessage>

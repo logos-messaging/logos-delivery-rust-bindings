@@ -11,6 +11,7 @@ pub struct DeliveryConfig {
     discv5_udp_port: Option<u16>,
     log_level: String,
     call_timeout: Duration,
+    connect_wait: Option<Duration>,
     skip_version_check: bool,
     min_library_version: Option<String>,
     extra: Map<String, Value>,
@@ -25,6 +26,7 @@ impl Default for DeliveryConfig {
             discv5_udp_port: None,
             log_level: "ERROR".into(),
             call_timeout: Duration::from_secs(60),
+            connect_wait: None,
             skip_version_check: false,
             min_library_version: None,
             extra: Map::new(),
@@ -71,6 +73,14 @@ impl DeliveryConfig {
         self
     }
 
+    /// Makes `start` wait up to `timeout` for a first peer before returning. A
+    /// node with no peers cannot deliver anything yet, but a slow or empty
+    /// network is not a startup failure: on timeout `start` still succeeds.
+    pub fn wait_for_connection(mut self, timeout: Duration) -> Self {
+        self.connect_wait = Some(timeout);
+        self
+    }
+
     /// Any other node option, by config field name (see `get_available_configs`).
     pub fn option(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {
         self.extra.insert(key.into(), value.into());
@@ -95,6 +105,10 @@ impl DeliveryConfig {
             return Ok(());
         }
         crate::version::check_library(self.min_library_version.as_deref())
+    }
+
+    pub(crate) fn connect_wait(&self) -> Option<Duration> {
+        self.connect_wait
     }
 
     pub(crate) fn timeout(&self) -> Duration {

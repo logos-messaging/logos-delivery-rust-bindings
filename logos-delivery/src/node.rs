@@ -111,9 +111,11 @@ pub struct DeliveryNode {
 
 impl DeliveryNode {
     /// Creates and starts a node. Returns once it is started, not once it is
-    /// connected: see [`DeliveryNode::wait_connected`].
+    /// connected, unless [`DeliveryConfig::wait_for_connection`] asks for it; see
+    /// also [`DeliveryNode::wait_connected`].
     pub async fn start(config: DeliveryConfig) -> Result<Self> {
         config.check_version()?;
+        let connect_wait = config.connect_wait();
         let ctx = LogosDeliveryCtx::new_async(config.to_json(), config.timeout())
             .await
             .map_err(DeliveryError::Startup)?;
@@ -153,6 +155,11 @@ impl DeliveryNode {
             .start_node_async()
             .await
             .map_err(DeliveryError::Startup)?;
+        if let Some(timeout) = connect_wait {
+            if let Err(e) = node.wait_connected(timeout).await {
+                tracing::warn!("no peers yet, continuing: {e}");
+            }
+        }
         Ok(node)
     }
 
