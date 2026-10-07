@@ -9,7 +9,7 @@ fn main() {
     let Some(lib_dir) = locate_lib_dir() else {
         println!(
             "cargo:warning=liblogosdelivery could not be located; `cargo check`/\
-             `clippy` will pass, but building or testing will fail at link. Set \
+             `clippy` will pass, but a binary that starts a node will fail at link. Set \
              LOGOS_DELIVERY_LIB_DIR to the directory containing the library."
         );
         return;
@@ -98,16 +98,19 @@ fn locate_lib_dir() -> Option<PathBuf> {
 }
 
 /// Resolve a lib dir to an absolute, canonical path. Cargo runs build scripts
-/// with the cwd set to the crate dir, so a relative value is anchored at the
-/// workspace root. Canonicalizing also follows symlinks (e.g. nix's `result`) to
-/// the immutable path, so the stamped install name / soname stays stable.
+/// with the cwd set to the crate dir, which for a git or registry dependency is
+/// inside cargo's cache, so a relative value is anchored at the directory cargo
+/// was invoked from (`PWD`), where the user wrote it. Prefer an absolute path.
+/// Canonicalizing also follows symlinks (e.g. nix's `result`) to the immutable
+/// path, so the stamped install name / soname stays stable.
 fn resolve_lib_dir(dir: &str) -> Option<PathBuf> {
     let path = Path::new(dir);
     let anchored = if path.is_absolute() {
         path.to_path_buf()
     } else {
-        let manifest = std::env::var("CARGO_MANIFEST_DIR").ok()?;
-        Path::new(&manifest).parent()?.join(path)
+        println!("cargo:rerun-if-env-changed=PWD");
+        let invoked_from = std::env::var("PWD").ok()?;
+        Path::new(&invoked_from).join(path)
     };
     // Re-run once the lib appears, so build order (nix build vs. cargo) is free.
     println!("cargo:rerun-if-changed={}", anchored.display());

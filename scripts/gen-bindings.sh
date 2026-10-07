@@ -22,6 +22,10 @@ for f in ffi types api; do cp "$src/library/rust_bindings/src/$f.rs" "$out/$f.rs
 # The event API is not generated, and registering a listener needs the raw ctx pointer.
 sed -i.bak 's/^    ptr: \*mut c_void,/    pub(crate) ptr: *mut c_void,/' "$out/api.rs" && rm "$out/api.rs.bak"
 
+# build.rs emits the link directives, and only when it found the library, so a
+# consumer that never calls the node (e.g. its own unit tests) still links.
+sed -i.bak '/^#\[link(name = "logosdelivery")\]$/d' "$out/ffi.rs" && rm "$out/ffi.rs.bak"
+
 # The nimble version is the only runtime signal the library exposes (see src/version.rs).
 sed -n 's/^version *= *"\(.*\)"/\1/p' "$src/logos_delivery.nimble" > "$here/logos-delivery/MIN_LIBRARY_VERSION"
 

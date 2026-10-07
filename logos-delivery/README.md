@@ -26,7 +26,7 @@ last clone, panic inside a tokio runtime (like `Runtime::block_on`): use `Delive
 
 ## Linking
 
-Set `LOGOS_DELIVERY_LIB_DIR` to the directory holding `liblogosdelivery`
+Set `LOGOS_DELIVERY_LIB_DIR` to the directory holding `liblogosdelivery` (an absolute path; a relative one is resolved against the directory cargo is run from)
 (`make liblogosdelivery` in logos-delivery produces `build/`). Without it `cargo check`
 passes but linking fails. `LOGOS_DELIVERY_RELOCATABLE=1` links the library in place for
 bundling (iOS always does).

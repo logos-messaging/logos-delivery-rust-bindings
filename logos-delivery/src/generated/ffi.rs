@@ -7,7 +7,6 @@ pub type FFICallback = unsafe extern "C" fn(
     user_data: *mut c_void,
 );
 
-#[link(name = "logosdelivery")]
 extern "C" {
     pub fn logosdelivery_create_node(req_cbor: *const u8, req_cbor_len: usize, callback: FFICallback, user_data: *mut c_void) -> *mut c_void;
     pub fn logosdelivery_start_node(ctx: *mut c_void, callback: FFICallback, user_data: *mut c_void, req_cbor: *const u8, req_cbor_len: usize) -> c_int;
