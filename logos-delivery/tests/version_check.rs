@@ -15,13 +15,13 @@ fn config(port: u16) -> DeliveryConfig {
 #[tokio::test]
 #[serial]
 async fn starts_against_the_linked_library() {
-    let node = DeliveryNode::start(config(62010)).await.expect("start");
+    let node = DeliveryNode::start(config(22010)).await.expect("start");
     node.shutdown().await.expect("shutdown");
 }
 
 #[tokio::test]
 async fn fails_before_creating_a_node_when_library_is_too_old() {
-    let err = DeliveryNode::start(config(62020).require_min_library_version("999.0.0"))
+    let err = DeliveryNode::start(config(22020).require_min_library_version("999.0.0"))
         .await
         .err()
         .expect("must fail");
@@ -33,7 +33,7 @@ async fn fails_before_creating_a_node_when_library_is_too_old() {
 
 #[tokio::test]
 async fn skip_version_check_bypasses_the_check() {
-    let cfg = config(62030)
+    let cfg = config(22030)
         .require_min_library_version("999.0.0")
         .skip_version_check();
     let node = DeliveryNode::start(cfg).await.expect("start");

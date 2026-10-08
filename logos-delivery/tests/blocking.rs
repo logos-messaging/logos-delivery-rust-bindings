@@ -27,9 +27,9 @@ fn published_message_reaches_peer_through_inbound_queue() {
         .build()
         .expect("runtime");
     let sender =
-        BlockingDeliveryNode::start(config(63010), runtime.handle().clone()).expect("sender");
+        BlockingDeliveryNode::start(config(24010), runtime.handle().clone()).expect("sender");
     let receiver =
-        BlockingDeliveryNode::start(config(63020), runtime.handle().clone()).expect("receiver");
+        BlockingDeliveryNode::start(config(24020), runtime.handle().clone()).expect("receiver");
 
     let address = receiver.listen_addresses().expect("addresses")[0].clone();
     sender.connect(&address, TIMEOUT).expect("connect");
@@ -74,7 +74,7 @@ fn blocking_channel_lifecycle() {
         .enable_all()
         .build()
         .expect("runtime");
-    let node = BlockingDeliveryNode::start(config(63030), runtime.handle().clone()).expect("node");
+    let node = BlockingDeliveryNode::start(config(24030), runtime.handle().clone()).expect("node");
 
     let channel = node
         .create_channel(ChannelConfig {
