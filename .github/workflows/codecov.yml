@@ -31,7 +31,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         continue-on-error: true
       - run: |
-          cargo install grcov;
+          cargo install grcov --locked;
           cargo test --workspace --exclude logos-delivery --all-features;
           cargo test --workspace --exclude logos-delivery discv5_echo -- --ignored;
           cargo test --workspace --exclude logos-delivery default_echo -- --ignored;
