@@ -42,14 +42,17 @@ jobs:
   test:
     name: Test
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # 1.88.0, not stable: waku-bindings pulls in wasmer 2 through rln, whose
+          # wasmer-vm needs __rust_probestack, dropped from compiler_builtins in 1.89.
           - os: ubuntu-latest
-            toolchain: stable
+            toolchain: 1.88.0
           #- os: windows-latest
           #  toolchain: stable-x86_64-pc-windows-gnu
           - os: macos-latest
-            toolchain: stable
+            toolchain: 1.88.0
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:

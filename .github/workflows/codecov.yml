@@ -24,7 +24,8 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          # Not stable: wasmer-vm (via rln) needs __rust_probestack, gone in Rust 1.89.
+          toolchain: 1.88.0
           override: true
           components: llvm-tools-preview
       - uses: actions-rs/cargo@v1
