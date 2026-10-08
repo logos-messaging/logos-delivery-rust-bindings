@@ -42,6 +42,8 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: /tmp/cov/
           name: waku-bindings-codecov
-          fail_ci_if_error: true
+          # Without a token (not configured, or not exposed to this run) the upload is
+          # rate limited by codecov.io and fails for reasons unrelated to the code.
+          fail_ci_if_error: ${{ secrets.CODECOV_TOKEN != '' }}
 
 
