@@ -18,11 +18,13 @@ channel.send(b"hello").await?;                      // ChannelEvent::{Received, 
 
 ## Blocking API
 
-Synchronous callers (no tokio) use `logos_delivery::blocking::BlockingDeliveryNode`: it owns a
-two-worker runtime and mirrors the node (`start`, `subscribe`, `publish`, `wait_connected`,
+Synchronous callers (no tokio) use `logos_delivery::blocking::BlockingDeliveryNode`: it is driven
+on a tokio `Handle` the caller passes to `start(config, handle)`; the crate never creates a
+runtime. That runtime needs the time driver (e.g. `enable_all()`) and must be multi-threaded or
+driven elsewhere. It mirrors the node (`subscribe`, `publish`, `wait_connected`,
 `create_channel`, `shutdown`, ...). `inbound_queue(|msg| Option<T>)` and `events()` give
 bounded `crossbeam_channel::Receiver`s fed off the FFI thread. Its methods, and dropping the
-last clone, panic inside a tokio runtime (like `Runtime::block_on`): use `DeliveryNode` there.
+last clone, panic inside a tokio runtime (like `Handle::block_on`): use `DeliveryNode` there.
 
 ## Linking
 

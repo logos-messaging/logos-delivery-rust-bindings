@@ -21,8 +21,15 @@ fn config(port: u16) -> DeliveryConfig {
 
 #[test]
 fn published_message_reaches_peer_through_inbound_queue() {
-    let sender = BlockingDeliveryNode::start(config(63010)).expect("sender");
-    let receiver = BlockingDeliveryNode::start(config(63020)).expect("receiver");
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let sender =
+        BlockingDeliveryNode::start(config(63010), runtime.handle().clone()).expect("sender");
+    let receiver =
+        BlockingDeliveryNode::start(config(63020), runtime.handle().clone()).expect("receiver");
 
     let address = receiver.listen_addresses().expect("addresses")[0].clone();
     sender.connect(&address, TIMEOUT).expect("connect");

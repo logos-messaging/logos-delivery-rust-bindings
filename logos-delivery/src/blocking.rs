@@ -1,21 +1,25 @@
 //! Blocking facade over [`DeliveryNode`] for synchronous callers.
 //!
-//! [`BlockingDeliveryNode`] owns a small tokio runtime and bridges every call with
-//! `block_on`, so callers need no async code. Like `Runtime::block_on`, its methods
-//! panic when called from inside a tokio runtime, and so does dropping the last
-//! clone there: use [`DeliveryNode`] directly in async code.
+//! [`BlockingDeliveryNode`] bridges every call with `Handle::block_on` on a tokio
+//! runtime the caller owns and passes in, so this crate never creates one. Like
+//! `Handle::block_on`, its methods panic when called from inside a tokio runtime,
+//! and so does dropping the last clone there: use [`DeliveryNode`] directly in
+//! async code. The runtime must have its time driver enabled (`enable_time` or
+//! `enable_all`), and be multi-threaded or driven by another thread
+//! (`Runtime::block_on`), for background tasks such as [`BlockingDeliveryNode::events`]
+//! to make progress.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use crossbeam_channel::{bounded, Receiver, TrySendError};
 use futures_core::Stream;
-use tokio::runtime::Runtime;
+use tokio::runtime::Handle;
 use tokio_stream::StreamExt;
 
 use crate::channel::ChannelConfig;
 use crate::config::DeliveryConfig;
-use crate::error::{DeliveryError, Result};
+use crate::error::Result;
 use crate::events::{ConnectionStatus, DeliveryEvent, ReceivedMessage};
 use crate::node::{DeliveryNode, RequestId};
 use crate::Channel;
@@ -24,27 +28,23 @@ use crate::Channel;
 const QUEUE_CAPACITY: usize = 1024;
 
 struct Shared {
-    // Declared before `runtime`: the node must be torn down while the runtime exists.
     node: DeliveryNode,
-    runtime: Runtime,
+    runtime: Handle,
 }
 
-/// A [`DeliveryNode`] driven synchronously. Cheap to clone; clones share the node
-/// and its runtime, which stop once the last clone (and channel handle) is dropped.
+/// A [`DeliveryNode`] driven synchronously. Cheap to clone; clones share the node,
+/// which stops once the last clone (and channel handle) is dropped.
 #[derive(Clone)]
 pub struct BlockingDeliveryNode {
     shared: Arc<Shared>,
 }
 
 impl BlockingDeliveryNode {
-    /// Starts a node on a fresh two-worker runtime. Returns once it is started,
-    /// not once it is connected: see [`BlockingDeliveryNode::wait_connected`].
-    pub fn start(config: DeliveryConfig) -> Result<Self> {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .map_err(|e| DeliveryError::Startup(e.to_string()))?;
+    /// Starts a node, driving it on the runtime behind `runtime`. The caller owns
+    /// that runtime and must keep it alive while the node is in use. Returns once
+    /// the node is started, not once it is connected: see
+    /// [`BlockingDeliveryNode::wait_connected`].
+    pub fn start(config: DeliveryConfig, runtime: Handle) -> Result<Self> {
         let node = runtime.block_on(DeliveryNode::start(config))?;
         Ok(Self {
             shared: Arc::new(Shared { node, runtime }),

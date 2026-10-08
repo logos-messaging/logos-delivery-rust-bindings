@@ -24,7 +24,8 @@
 //! # }
 //! ```
 //!
-//! Synchronous callers use [`blocking::BlockingDeliveryNode`], which owns its own runtime.
+//! Synchronous callers use [`blocking::BlockingDeliveryNode`], which is driven
+//! on a tokio runtime handle supplied by the caller; this crate never creates a runtime.
 //!
 //! The FFI layer in `generated/` is emitted by nim-ffi; regenerate it with
 //! `scripts/gen-bindings.sh`.
