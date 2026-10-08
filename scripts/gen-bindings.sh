@@ -6,7 +6,7 @@
 set -euo pipefail
 
 src="$(cd "${1:?path to a logos-delivery checkout}" && pwd)"
-rev="${2:-$(git -C "$src" rev-parse --short=9 HEAD)}"
+rev="${2:-$(git -C "$src" rev-parse HEAD)}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/logos-delivery/src/generated"
 
