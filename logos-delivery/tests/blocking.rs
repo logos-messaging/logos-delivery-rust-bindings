@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crossbeam_channel::RecvTimeoutError;
 use logos_delivery::blocking::BlockingDeliveryNode;
-use logos_delivery::DeliveryConfig;
+use logos_delivery::{ChannelConfig, DeliveryConfig, DeliveryEvent};
 
 const TOPIC: &str = "/logos-delivery-blocking-test/1/chat/proto";
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -39,6 +39,7 @@ fn published_message_reaches_peer_through_inbound_queue() {
     sender.subscribe(TOPIC).expect("subscribe");
     // Messages on other topics are filtered out by the mapping.
     let inbound = receiver.inbound_queue(|m| (m.content_topic == TOPIC).then_some(m.payload));
+    let events = receiver.events();
     // Let the mesh form before publishing.
     std::thread::sleep(Duration::from_secs(5));
 
@@ -51,6 +52,46 @@ fn published_message_reaches_peer_through_inbound_queue() {
         Err(RecvTimeoutError::Disconnected) => panic!("forwarder ended early"),
     }
 
+    // The same message also arrives as a typed event.
+    loop {
+        match events.recv_timeout(TIMEOUT).expect("event in time") {
+            DeliveryEvent::MessageReceived { message, .. } if message.content_topic == TOPIC => {
+                assert_eq!(message.payload, b"ping");
+                break;
+            }
+            _ => {}
+        }
+    }
+
     sender.shutdown().expect("shutdown");
     receiver.shutdown().expect("shutdown");
+}
+
+#[test]
+fn blocking_channel_lifecycle() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let node = BlockingDeliveryNode::start(config(63030), runtime.handle().clone()).expect("node");
+
+    let channel = node
+        .create_channel(ChannelConfig {
+            channel_id: "blocking-channel".into(),
+            content_topic: TOPIC.into(),
+            sender_id: "alice".into(),
+        })
+        .expect("create channel");
+    assert!(channel.exists().expect("exists"));
+    assert!(!channel.send(b"hello").expect("send").0.is_empty());
+    assert!(!channel
+        .send_ephemeral(b"hello")
+        .expect("send ephemeral")
+        .0
+        .is_empty());
+    channel.close().expect("close");
+    assert!(!channel.exists().expect("exists after close"));
+
+    node.shutdown().expect("shutdown");
 }

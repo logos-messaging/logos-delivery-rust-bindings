@@ -115,6 +115,9 @@ impl DeliveryConfig {
         self.call_timeout
     }
 
+    /// The flat object the pinned library still accepts next to its layered
+    /// `mode`/`preset`/`messagingOverrides` format; the startup version check bounds
+    /// which library revisions this has to work with.
     pub(crate) fn to_json(&self) -> String {
         let mut conf = Map::new();
         conf.insert("logLevel".into(), json!(self.log_level));

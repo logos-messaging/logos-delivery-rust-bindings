@@ -69,9 +69,18 @@ impl Channel {
     }
 
     pub async fn send(&self, payload: &[u8]) -> Result<RequestId> {
+        self.send_message(payload, false).await
+    }
+
+    /// Like [`Channel::send`], for a message that store nodes should not keep.
+    pub async fn send_ephemeral(&self, payload: &[u8]) -> Result<RequestId> {
+        self.send_message(payload, true).await
+    }
+
+    async fn send_message(&self, payload: &[u8], ephemeral: bool) -> Result<RequestId> {
         let message = json!({
             "payload": base64::engine::general_purpose::STANDARD.encode(payload),
-            "ephemeral": false,
+            "ephemeral": ephemeral,
         });
         self.node
             .ctx()

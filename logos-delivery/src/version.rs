@@ -22,6 +22,13 @@ extern "C" {
     fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
 }
 
+// A statically linked archive drops symbols nothing references, so dlsym cannot
+// find the export there: reference it directly (the library is linked anyway).
+#[cfg(logosdelivery_static)]
+extern "C" {
+    fn logosdelivery_version() -> *const c_char;
+}
+
 #[cfg(target_os = "macos")]
 const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
 #[cfg(not(target_os = "macos"))]
@@ -31,13 +38,18 @@ const RTLD_DEFAULT: *mut c_void = std::ptr::null_mut();
 fn reported_version() -> &'static Option<String> {
     static VERSION: OnceLock<Option<String>> = OnceLock::new();
     VERSION.get_or_init(|| {
+        #[cfg(logosdelivery_static)]
+        let version: unsafe extern "C" fn() -> *const c_char = logosdelivery_version;
         // Looked up at run time: a direct extern reference would turn an old
         // library into a link error instead of a clear one.
-        let sym = unsafe { dlsym(RTLD_DEFAULT, c"logosdelivery_version".as_ptr()) };
-        if sym.is_null() {
-            return None;
-        }
-        let version: unsafe extern "C" fn() -> *const c_char = unsafe { std::mem::transmute(sym) };
+        #[cfg(not(logosdelivery_static))]
+        let version: unsafe extern "C" fn() -> *const c_char = {
+            let sym = unsafe { dlsym(RTLD_DEFAULT, c"logosdelivery_version".as_ptr()) };
+            if sym.is_null() {
+                return None;
+            }
+            unsafe { std::mem::transmute(sym) }
+        };
         let ptr = unsafe { version() };
         if ptr.is_null() {
             return None;

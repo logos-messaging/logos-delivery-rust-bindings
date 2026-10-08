@@ -63,6 +63,10 @@ impl BlockingDeliveryNode {
         self.block_on(self.shared.node.publish(content_topic, payload))
     }
 
+    pub fn publish_ephemeral(&self, content_topic: &str, payload: &[u8]) -> Result<RequestId> {
+        self.block_on(self.shared.node.publish_ephemeral(content_topic, payload))
+    }
+
     pub fn connection_status(&self) -> Result<ConnectionStatus> {
         self.block_on(self.shared.node.connection_status())
     }
@@ -172,6 +176,12 @@ impl BlockingChannel {
 
     pub fn send(&self, payload: &[u8]) -> Result<RequestId> {
         self.shared.runtime.block_on(self.channel.send(payload))
+    }
+
+    pub fn send_ephemeral(&self, payload: &[u8]) -> Result<RequestId> {
+        self.shared
+            .runtime
+            .block_on(self.channel.send_ephemeral(payload))
     }
 
     pub fn exists(&self) -> Result<bool> {

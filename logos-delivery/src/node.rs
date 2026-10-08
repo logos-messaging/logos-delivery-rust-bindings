@@ -103,7 +103,9 @@ impl Drop for Inner {
 }
 
 /// A running Logos Delivery node. Cheap to clone; the node stops once the last
-/// clone is dropped, or earlier through [`DeliveryNode::shutdown`].
+/// clone is dropped, or earlier through [`DeliveryNode::shutdown`]. Dropped on a
+/// runtime thread, teardown is handed to the blocking pool and cannot be awaited:
+/// call `shutdown().await` first when its result or timing matters.
 #[derive(Clone)]
 pub struct DeliveryNode {
     inner: Arc<Inner>,
@@ -201,10 +203,28 @@ impl DeliveryNode {
     /// Publishes `payload` on `content_topic`. Follow its fate through the
     /// `Message*` events carrying the returned id.
     pub async fn publish(&self, content_topic: &str, payload: &[u8]) -> Result<RequestId> {
+        self.send(content_topic, payload, false).await
+    }
+
+    /// Like [`DeliveryNode::publish`], for a message that store nodes should not keep.
+    pub async fn publish_ephemeral(
+        &self,
+        content_topic: &str,
+        payload: &[u8],
+    ) -> Result<RequestId> {
+        self.send(content_topic, payload, true).await
+    }
+
+    async fn send(
+        &self,
+        content_topic: &str,
+        payload: &[u8],
+        ephemeral: bool,
+    ) -> Result<RequestId> {
         let message = json!({
             "contentTopic": content_topic,
             "payload": base64::engine::general_purpose::STANDARD.encode(payload),
-            "ephemeral": false,
+            "ephemeral": ephemeral,
         });
         self.inner
             .ctx()
@@ -256,13 +276,15 @@ impl DeliveryNode {
     }
 
     /// Addresses other nodes can dial this one on, as multiaddrs.
+    ///
+    /// Backed by the library's kernel API, which it documents as unstable.
     pub async fn listen_addresses(&self) -> Result<Vec<String>> {
         let addresses = self
             .inner
             .ctx()
             .waku_listen_addresses_async()
             .await
-            .map_err(DeliveryError::Startup)?;
+            .map_err(DeliveryError::Peer)?;
         Ok(addresses
             .trim_matches('"')
             .split(',')
@@ -271,14 +293,17 @@ impl DeliveryNode {
             .collect())
     }
 
-    /// Dials the peer at `multiaddr`.
+    /// Dials the peer at `multiaddr`. Backed by the library's unstable kernel API.
     pub async fn connect(&self, multiaddr: &str, timeout: Duration) -> Result<()> {
         self.inner
             .ctx()
-            .waku_connect_async(multiaddr.to_string(), timeout.as_millis() as u32)
+            .waku_connect_async(
+                multiaddr.to_string(),
+                u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX),
+            )
             .await
             .map(|_| ())
-            .map_err(DeliveryError::Startup)
+            .map_err(DeliveryError::Peer)
     }
 
     /// Opens a reliable channel on this node.

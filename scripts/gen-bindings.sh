@@ -26,6 +26,10 @@ sed -i.bak 's/^    ptr: \*mut c_void,/    pub(crate) ptr: *mut c_void,/' "$out/a
 # consumer that never calls the node (e.g. its own unit tests) still links.
 sed -i.bak '/^#\[link(name = "logosdelivery")\]$/d' "$out/ffi.rs" && rm "$out/ffi.rs.bak"
 
+# The patches above are silent no-ops when the generator's output changes shape.
+grep -q 'pub(crate) ptr: \*mut c_void' "$out/api.rs" || { echo "ptr visibility patch did not apply" >&2; exit 1; }
+if grep -q '#\[link(name = "logosdelivery")\]' "$out/ffi.rs"; then echo "#[link] removal did not apply" >&2; exit 1; fi
+
 # The nimble version is the only runtime signal the library exposes (see src/version.rs).
 sed -n 's/^version *= *"\(.*\)"/\1/p' "$src/logos_delivery.nimble" > "$here/logos-delivery/MIN_LIBRARY_VERSION"
 

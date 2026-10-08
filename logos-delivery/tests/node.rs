@@ -125,3 +125,31 @@ async fn start_waits_for_a_peer_but_does_not_fail_without_one() {
     );
     node.shutdown().await.expect("shutdown");
 }
+
+/// A node that is still disconnected when `wait_connected` starts has to learn about
+/// the connection from the `connection_status_change` event.
+#[tokio::test]
+#[serial]
+async fn wait_connected_returns_on_the_connection_event() {
+    let sender = DeliveryNode::start(config(60160)).await.expect("sender");
+    let receiver = DeliveryNode::start(config(60170)).await.expect("receiver");
+    assert_eq!(
+        sender.connection_status().await.expect("status"),
+        ConnectionStatus::Disconnected
+    );
+
+    let waiter = tokio::spawn({
+        let sender = sender.clone();
+        async move { sender.wait_connected(TIMEOUT).await }
+    });
+    // Let the waiter read the (disconnected) status and subscribe to events.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let address = receiver.listen_addresses().await.expect("addresses")[0].clone();
+    sender.connect(&address, TIMEOUT).await.expect("connect");
+
+    let status = waiter.await.expect("task").expect("connected");
+    assert_ne!(status, ConnectionStatus::Disconnected);
+
+    sender.shutdown().await.expect("shutdown");
+    receiver.shutdown().await.expect("shutdown");
+}

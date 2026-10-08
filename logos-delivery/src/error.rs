@@ -16,8 +16,10 @@ pub enum DeliveryError {
     Channel(String),
     #[error("shutdown failed: {0}")]
     Shutdown(String),
-    #[error("liblogosdelivery {found} does not match the bindings (expected {expected})")]
+    #[error("liblogosdelivery does not match the bindings, expected: {expected}, found: {found}")]
     VersionMismatch { expected: String, found: String },
+    #[error("peer operation failed: {0}")]
+    Peer(String),
     #[error("timed out waiting for: {0}")]
     Timeout(&'static str),
 }

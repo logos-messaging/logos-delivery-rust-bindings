@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(logosdelivery_static)");
     println!("cargo:rerun-if-env-changed=LOGOS_DELIVERY_LIB_DIR");
     println!("cargo:rerun-if-env-changed=LOGOS_DELIVERY_RELOCATABLE");
 
@@ -63,6 +64,7 @@ fn main() {
     }
 
     if target_os == "ios" {
+        println!("cargo:rustc-cfg=logosdelivery_static");
         // iOS apps cannot ship loose dylibs the way an APK can, so the delivery
         // node is linked as a static archive. rln has to be named explicitly:
         // with no shared library there is no rpath to resolve it transitively.
@@ -92,7 +94,13 @@ fn locate_lib_dir() -> Option<PathBuf> {
         if let Some(resolved) = resolve_lib_dir(&dir) {
             return Some(resolved);
         }
-        println!("cargo:warning=LOGOS_DELIVERY_LIB_DIR='{dir}' could not be resolved");
+        // A warning would be hidden for git and registry dependencies and end as a
+        // bare undefined-symbol link error, so a bad explicit setting fails here.
+        panic!(
+            "LOGOS_DELIVERY_LIB_DIR='{dir}' could not be resolved: use an absolute path \
+             (a relative one resolves against PWD, currently {:?})",
+            std::env::var("PWD").ok()
+        );
     }
     None
 }
@@ -127,6 +135,7 @@ fn resolve_lib_dir(dir: &str) -> Option<PathBuf> {
 fn stamp_absolute_macos(lib_dir: &Path, out_dir: &str) -> bool {
     let src = lib_dir.join("liblogosdelivery.dylib");
     let dst = format!("{out_dir}/liblogosdelivery.dylib");
+    require_library(&src);
     copy_writable(&src, Path::new(&dst));
     println!("cargo:rerun-if-changed={}", src.display());
     run("install_name_tool", &["-id", path_str(&src), &dst])
@@ -138,9 +147,19 @@ fn stamp_absolute_macos(lib_dir: &Path, out_dir: &str) -> bool {
 fn stamp_absolute_linux(lib_dir: &Path, out_dir: &str) -> bool {
     let src = lib_dir.join("liblogosdelivery.so");
     let dst = format!("{out_dir}/liblogosdelivery.so");
+    require_library(&src);
     copy_writable(&src, Path::new(&dst));
     println!("cargo:rerun-if-changed={}", src.display());
     run("patchelf", &["--set-soname", path_str(&src), &dst])
+}
+
+fn require_library(lib: &Path) {
+    assert!(
+        lib.exists(),
+        "{} not found: LOGOS_DELIVERY_LIB_DIR must hold the dynamic library \
+         (e.g. `make liblogosdelivery` or the nix package's lib/)",
+        lib.display()
+    );
 }
 
 fn path_str(p: &Path) -> &str {
