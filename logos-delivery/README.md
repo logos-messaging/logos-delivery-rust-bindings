@@ -31,7 +31,10 @@ last clone, panic inside a tokio runtime (like `Handle::block_on`): use `Deliver
 Set `LOGOS_DELIVERY_LIB_DIR` to the directory holding `liblogosdelivery` (an absolute path; a relative one is resolved against the directory cargo is run from)
 (`make liblogosdelivery` in logos-delivery produces `build/`). Without it `cargo check`
 passes but linking fails. `LOGOS_DELIVERY_RELOCATABLE=1` links the library in place for
-bundling (iOS always does).
+bundling (iOS and Android always do). The default build stamps an absolute install name on
+a copy of the library (needs `patchelf` on Linux); if that fails the build stops, and
+`LOGOS_DELIVERY_ALLOW_UNSTAMPED=1` links it in place for this crate's own tests only.
+Windows is not supported. Requires Rust 1.77.
 
 ## Library version check
 

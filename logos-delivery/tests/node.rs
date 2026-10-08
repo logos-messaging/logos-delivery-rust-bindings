@@ -153,3 +153,21 @@ async fn wait_connected_returns_on_the_connection_event() {
     sender.shutdown().await.expect("shutdown");
     receiver.shutdown().await.expect("shutdown");
 }
+
+#[tokio::test]
+#[serial]
+async fn channel_created_with_its_event_stream() {
+    let node = DeliveryNode::start(config(60180)).await.expect("node");
+    let (channel, events) = node
+        .create_channel_with_events(ChannelConfig {
+            channel_id: "stream-channel".into(),
+            content_topic: TOPIC.into(),
+            sender_id: "alice".into(),
+        })
+        .await
+        .expect("create channel");
+    let _events = Box::pin(events);
+    assert!(channel.exists().await.expect("exists"));
+    channel.close().await.expect("close");
+    node.shutdown().await.expect("shutdown");
+}

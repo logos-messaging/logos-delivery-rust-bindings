@@ -3,7 +3,7 @@ use std::time::Duration;
 use serde_json::{json, Map, Value};
 
 /// Node configuration, serialised to the JSON `logosdelivery_create_node` takes.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DeliveryConfig {
     preset: Option<String>,
     mode: String,
@@ -15,6 +15,25 @@ pub struct DeliveryConfig {
     skip_version_check: bool,
     min_library_version: Option<String>,
     extra: Map<String, Value>,
+}
+
+// Not derived: `extra` can hold secrets (node keys, credential passwords), so only
+// its keys are shown.
+impl std::fmt::Debug for DeliveryConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeliveryConfig")
+            .field("preset", &self.preset)
+            .field("mode", &self.mode)
+            .field("tcp_port", &self.tcp_port)
+            .field("discv5_udp_port", &self.discv5_udp_port)
+            .field("log_level", &self.log_level)
+            .field("call_timeout", &self.call_timeout)
+            .field("connect_wait", &self.connect_wait)
+            .field("skip_version_check", &self.skip_version_check)
+            .field("min_library_version", &self.min_library_version)
+            .field("extra_keys", &self.extra.keys().collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 impl Default for DeliveryConfig {

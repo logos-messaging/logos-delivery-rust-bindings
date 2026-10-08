@@ -142,12 +142,17 @@ impl BlockingDeliveryNode {
         // The stream exists before the task starts, so nothing after this call is missed.
         let mut stream = Box::pin(stream);
         self.shared.runtime.spawn(async move {
+            let mut full = false;
             while let Some(item) = stream.next().await {
                 let Some(mapped) = map(item) else { continue };
                 match tx.try_send(mapped) {
-                    Ok(()) => {}
+                    Ok(()) => full = false,
                     Err(TrySendError::Full(_)) => {
-                        tracing::warn!("inbound queue full, dropping item")
+                        // Once per overflow, not per dropped item.
+                        if !full {
+                            tracing::warn!("inbound queue full, dropping items");
+                        }
+                        full = true;
                     }
                     Err(TrySendError::Disconnected(_)) => break,
                 }

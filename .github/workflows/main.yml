@@ -109,7 +109,11 @@ jobs:
             }")
           echo "LOGOS_DELIVERY_LIB_DIR=$out/lib" >> "$GITHUB_ENV"
       # Nodes in one process share the persistence root and ports: run serially.
+      # The runner has no patchelf, so the library cannot be stamped; linking it in
+      # place is fine for this crate's own tests.
       - run: cargo test -p logos-delivery -- --test-threads=1
+        env:
+          LOGOS_DELIVERY_ALLOW_UNSTAMPED: "1"
 
   lints:
     name: Lint

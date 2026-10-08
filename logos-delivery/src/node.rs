@@ -1,5 +1,6 @@
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use serde_json::json;
 use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 
-use crate::channel::{Channel, ChannelConfig};
+use crate::channel::{Channel, ChannelConfig, ChannelEvent};
 use crate::config::DeliveryConfig;
 use crate::error::{DeliveryError, Result};
 use crate::events::{ConnectionStatus, DeliveryEvent, ReceivedMessage, EVENT_NAMES};
@@ -52,7 +53,17 @@ unsafe extern "C" fn on_event(ret: c_int, msg: *const c_char, len: usize, user_d
             // No receivers is fine: nobody asked for events yet.
             let _ = tx.send(event);
         }
-        Err(e) => tracing::debug!("ignoring unparsable delivery event: {e}"),
+        Err(e) => {
+            // Schema drift drops every event of that kind: say so once at warn.
+            static WARNED: AtomicBool = AtomicBool::new(false);
+            if WARNED.swap(true, Ordering::Relaxed) {
+                tracing::debug!("ignoring unparsable delivery event: {e}");
+            } else {
+                tracing::warn!(
+                    "ignoring unparsable delivery event, later ones are logged at debug: {e}"
+                );
+            }
+        }
     }
 }
 
@@ -252,9 +263,11 @@ impl DeliveryNode {
         // Subscribe first, so a transition between the two reads is not lost.
         let mut events = self.events();
         let wait = async {
-            let current = self.connection_status().await?;
-            if current != ConnectionStatus::Disconnected {
-                return Ok(current);
+            // A failed read is not fatal: connection_status_change events follow.
+            match self.connection_status().await {
+                Ok(current) if current != ConnectionStatus::Disconnected => return Ok(current),
+                Ok(_) => {}
+                Err(e) => tracing::debug!("reading the connection status failed: {e}"),
             }
             loop {
                 match events.recv().await {
@@ -309,6 +322,18 @@ impl DeliveryNode {
     /// Opens a reliable channel on this node.
     pub async fn create_channel(&self, config: ChannelConfig) -> Result<Channel> {
         Channel::create(self.clone(), config).await
+    }
+
+    /// Opens a channel together with its event stream, subscribed before the channel
+    /// exists so no event after creation is missed (see [`Channel::events`]).
+    pub async fn create_channel_with_events(
+        &self,
+        config: ChannelConfig,
+    ) -> Result<(Channel, impl Stream<Item = ChannelEvent>)> {
+        let events = self.events();
+        let channel = Channel::create(self.clone(), config).await?;
+        let stream = channel.filter_events(events);
+        Ok((channel, stream))
     }
 
     /// Stops the node. It is destroyed once the last clone is dropped.

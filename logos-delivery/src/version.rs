@@ -9,7 +9,9 @@
 //! `scripts/gen-bindings.sh`); the hash is never compared, so newer compatible
 //! libraries pass.
 
-use std::ffi::{c_char, c_void, CStr};
+#[cfg(not(logosdelivery_static))]
+use std::ffi::c_void;
+use std::ffi::{c_char, CStr};
 use std::sync::OnceLock;
 
 use crate::error::{DeliveryError, Result};
@@ -18,6 +20,7 @@ const MIN_LIBRARY_VERSION: &str = include_str!("../MIN_LIBRARY_VERSION");
 
 const NOT_EXPORTED: &str = "no logosdelivery_version export";
 
+#[cfg(not(logosdelivery_static))]
 extern "C" {
     fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
 }
@@ -29,9 +32,9 @@ extern "C" {
     fn logosdelivery_version() -> *const c_char;
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(logosdelivery_static)))]
 const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(logosdelivery_static)))]
 const RTLD_DEFAULT: *mut c_void = std::ptr::null_mut();
 
 /// What the library reports about itself, read once per process.

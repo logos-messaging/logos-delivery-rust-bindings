@@ -2,6 +2,7 @@
 name = "logos-delivery"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.77"
 description = "Async (tokio) Rust client for Logos Delivery, with reliable channels"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/logos-messaging/logos-delivery-rust-bindings"

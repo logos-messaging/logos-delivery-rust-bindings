@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum DeliveryError {
     #[error("invalid configuration: {0}")]
     Config(String),

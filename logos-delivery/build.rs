@@ -6,6 +6,7 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(logosdelivery_static)");
     println!("cargo:rerun-if-env-changed=LOGOS_DELIVERY_LIB_DIR");
     println!("cargo:rerun-if-env-changed=LOGOS_DELIVERY_RELOCATABLE");
+    println!("cargo:rerun-if-env-changed=LOGOS_DELIVERY_ALLOW_UNSTAMPED");
 
     let Some(lib_dir) = locate_lib_dir() else {
         println!(
@@ -20,13 +21,13 @@ fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
 
     match target_os.as_str() {
-        "macos" | "linux" | "ios" => {}
+        "macos" | "linux" | "ios" | "android" => {}
         other => panic!("unsupported OS for logos-delivery transport: {other}"),
     }
 
     // Two linking modes, because dev builds and *distributable* builds want
     // opposite things out of the library's install name / soname.
-    if relocatable() || target_os == "ios" {
+    if relocatable() || target_os == "ios" || target_os == "android" {
         // Distribution: link the shipped library in place and leave its
         // relocatable name (@rpath on macOS, $ORIGIN soname on Linux) intact,
         // so the consumer can copy it into its own bundle and resolve it from
@@ -51,9 +52,18 @@ fn main() {
         if stamped {
             println!("cargo:rustc-link-search=native={out_dir}");
         } else {
-            // A library built without header padding cannot be renamed. Link it
-            // in place instead; the rpath only reaches this crate's own tests and
-            // binaries, so dependants need their own (see the relocatable mode).
+            // A library built without header padding (or without patchelf) cannot be
+            // renamed. Linking it in place would build fine but leave every
+            // dependant unable to find it at run time, and cargo hides this script's
+            // warnings for git and registry dependencies, so it is opt-in.
+            assert!(
+                std::env::var("LOGOS_DELIVERY_ALLOW_UNSTAMPED").as_deref() == Ok("1"),
+                "could not stamp an absolute install name on: {}; install patchelf (Linux), \
+                 build the library with -headerpad_max_install_names (macOS), or set \
+                 LOGOS_DELIVERY_RELOCATABLE=1 and give your binary an rpath. \
+                 LOGOS_DELIVERY_ALLOW_UNSTAMPED=1 links it in place for this crate's own tests only",
+                lib_dir.display()
+            );
             println!(
                 "cargo:warning=could not stamp an absolute install name on the library; \
                  linking it in place"
@@ -90,18 +100,22 @@ fn relocatable() -> bool {
 /// Locate the native library directory as an ABSOLUTE, canonical path. Prefers
 /// `LOGOS_DELIVERY_LIB_DIR`. Returns `None` when it is unset (e.g. `cargo check`).
 fn locate_lib_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("LOGOS_DELIVERY_LIB_DIR") {
-        if let Some(resolved) = resolve_lib_dir(&dir) {
-            return Some(resolved);
-        }
-        // A warning would be hidden for git and registry dependencies and end as a
-        // bare undefined-symbol link error, so a bad explicit setting fails here.
-        panic!(
-            "LOGOS_DELIVERY_LIB_DIR='{dir}' could not be resolved: use an absolute path \
-             (a relative one resolves against PWD, currently {:?})",
-            std::env::var("PWD").ok()
-        );
+    // An empty value (a stale env file) means unset.
+    let dir = std::env::var("LOGOS_DELIVERY_LIB_DIR")
+        .ok()
+        .filter(|d| !d.is_empty())?;
+    if let Some(resolved) = resolve_lib_dir(&dir) {
+        return Some(resolved);
     }
+    // Without PWD a relative path cannot be anchored, and the warning below would
+    // be hidden for git and registry dependencies: fail instead of a bare link error.
+    assert!(
+        Path::new(&dir).is_absolute() || std::env::var("PWD").is_ok(),
+        "LOGOS_DELIVERY_LIB_DIR is relative: {dir}, but PWD is not set to anchor it; use an absolute path"
+    );
+    // A path that no longer exists (e.g. a garbage-collected nix result) behaves as
+    // unset so that cargo check and editor tooling keep working.
+    println!("cargo:warning=LOGOS_DELIVERY_LIB_DIR could not be resolved: {dir}");
     None
 }
 
@@ -170,8 +184,13 @@ fn path_str(p: &Path) -> &str {
 fn copy_writable(src: &Path, dst: &Path) {
     use std::os::unix::fs::PermissionsExt;
 
-    fs::copy(src, dst)
-        .unwrap_or_else(|e| panic!("copy {} -> {}: {e}", src.display(), dst.display()));
+    fs::copy(src, dst).unwrap_or_else(|e| {
+        panic!(
+            "could not copy: {} to: {}, error: {e}",
+            src.display(),
+            dst.display()
+        )
+    });
     // Store-sourced files are read-only; restore owner write so the install
     // name / soname can be rewritten.
     fs::set_permissions(dst, fs::Permissions::from_mode(0o644)).unwrap();

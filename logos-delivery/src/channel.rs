@@ -108,10 +108,18 @@ impl Channel {
             .map_err(DeliveryError::Channel)
     }
 
-    /// Events of this channel only, from now on.
+    /// Events of this channel only, from now on. Events emitted before the call are
+    /// not replayed: use [`DeliveryNode::create_channel_with_events`] to see them all.
     pub fn events(&self) -> impl Stream<Item = ChannelEvent> {
+        self.filter_events(self.node.events())
+    }
+
+    pub(crate) fn filter_events(
+        &self,
+        events: tokio::sync::broadcast::Receiver<DeliveryEvent>,
+    ) -> impl Stream<Item = ChannelEvent> {
         let id = self.channel_id.clone();
-        BroadcastStream::new(self.node.events()).filter_map(move |event| match event {
+        BroadcastStream::new(events).filter_map(move |event| match event {
             Ok(DeliveryEvent::ChannelMessageReceived {
                 channel_id,
                 sender_id,

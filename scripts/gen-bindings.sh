@@ -6,7 +6,8 @@
 set -euo pipefail
 
 src="$(cd "${1:?path to a logos-delivery checkout}" && pwd)"
-rev="${2:-$(git -C "$src" rev-parse HEAD)}"
+# Always the full SHA: the CI job passes it to a nix flake reference.
+rev="$(git -C "$src" rev-parse "${2:-HEAD}")"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/logos-delivery/src/generated"
 
