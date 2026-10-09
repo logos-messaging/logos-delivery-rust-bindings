@@ -2,8 +2,8 @@
 //!
 //! [`BlockingDeliveryNode`] bridges every call with `Handle::block_on` on a tokio
 //! runtime the caller owns and passes in, so this crate never creates one. Like
-//! `Handle::block_on`, its methods panic when called from inside a tokio runtime,
-//! and so does dropping the last clone there: use [`DeliveryNode`] directly in
+//! `Handle::block_on`, its methods panic when called from inside a tokio runtime:
+//! use [`DeliveryNode`] directly in
 //! async code. The runtime must have its time driver enabled (`enable_time` or
 //! `enable_all`), and be multi-threaded or driven by another thread
 //! (`Runtime::block_on`), for background tasks such as [`BlockingDeliveryNode::events`]
@@ -142,17 +142,22 @@ impl BlockingDeliveryNode {
         // The stream exists before the task starts, so nothing after this call is missed.
         let mut stream = Box::pin(stream);
         self.shared.runtime.spawn(async move {
-            let mut full = false;
+            let mut dropped = 0usize;
             while let Some(item) = stream.next().await {
                 let Some(mapped) = map(item) else { continue };
                 match tx.try_send(mapped) {
-                    Ok(()) => full = false,
+                    Ok(()) => {
+                        if dropped > 0 {
+                            tracing::warn!("inbound queue recovered, dropped items: {dropped}");
+                            dropped = 0;
+                        }
+                    }
                     Err(TrySendError::Full(_)) => {
-                        // Once per overflow, not per dropped item.
-                        if !full {
+                        // Warn on the first drop of an overflow, then report the total.
+                        if dropped == 0 {
                             tracing::warn!("inbound queue full, dropping items");
                         }
-                        full = true;
+                        dropped += 1;
                     }
                     Err(TrySendError::Disconnected(_)) => break,
                 }
