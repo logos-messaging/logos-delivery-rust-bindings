@@ -103,12 +103,13 @@ impl Drop for Inner {
             }
             drop(unsafe { Arc::from_raw(data as *const broadcast::Sender<DeliveryEvent>) });
         };
-        // Destroying a context blocks for as long as the node takes to stop.
-        match tokio::runtime::Handle::try_current() {
-            Ok(handle) => {
-                handle.spawn_blocking(cleanup);
-            }
-            Err(_) => cleanup(),
+        // Destroying a context blocks for as long as the node takes to stop. On a
+        // runtime thread it gets its own thread: a blocking-pool task would be
+        // cancelled, and the node leaked, if the runtime is shutting down.
+        if tokio::runtime::Handle::try_current().is_ok() {
+            std::thread::spawn(cleanup);
+        } else {
+            cleanup();
         }
     }
 }
@@ -139,6 +140,7 @@ impl DeliveryNode {
 
         // Listeners go in before start so no event is missed.
         let mut ids = Vec::with_capacity(EVENT_NAMES.len());
+        let mut unregistered = None;
         for name in EVENT_NAMES {
             let cname = CString::new(*name).expect("event names have no NUL");
             let id = unsafe {
@@ -151,6 +153,8 @@ impl DeliveryNode {
             };
             if id != 0 {
                 ids.push(id);
+            } else {
+                unregistered.get_or_insert(*name);
             }
         }
 
@@ -163,6 +167,11 @@ impl DeliveryNode {
                 listener_data,
             }),
         };
+        if let Some(name) = unregistered {
+            return Err(DeliveryError::Startup(format!(
+                "could not register an event listener for: {name}"
+            )));
+        }
         node.inner
             .ctx()
             .start_node_async()
@@ -251,11 +260,10 @@ impl DeliveryNode {
             .ctx()
             .get_connection_status_async()
             .await
-            .map_err(DeliveryError::Startup)?;
-        serde_json::from_value(serde_json::Value::String(
-            status.trim_matches('"').to_string(),
-        ))
-        .map_err(|e| DeliveryError::Startup(e.to_string()))
+            .map_err(DeliveryError::Status)?;
+        serde_json::from_str(&status)
+            .or_else(|_| serde_json::from_value(serde_json::Value::String(status.clone())))
+            .map_err(|e| DeliveryError::Status(format!("{e}, got: {status}")))
     }
 
     /// Waits until the node reports at least one connection.
@@ -278,7 +286,7 @@ impl DeliveryNode {
                     }
                     Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(broadcast::error::RecvError::Closed) => {
-                        return Err(DeliveryError::Timeout("connection"))
+                        return Err(DeliveryError::Status("event stream closed".into()))
                     }
                 }
             }
