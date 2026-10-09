@@ -24,16 +24,17 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          # Not stable: wasmer-vm (via rln) needs __rust_probestack, gone in Rust 1.89.
+          toolchain: 1.88.0
           override: true
           components: llvm-tools-preview
       - uses: actions-rs/cargo@v1
         continue-on-error: true
       - run: |
-          cargo install grcov;
-          cargo test --all-features;
-          cargo test discv5_echo -- --ignored;
-          cargo test default_echo -- --ignored;
+          cargo install grcov --locked;
+          cargo test --workspace --exclude logos-delivery --all-features;
+          cargo test --workspace --exclude logos-delivery discv5_echo -- --ignored;
+          cargo test --workspace --exclude logos-delivery default_echo -- --ignored;
           mkdir /tmp/cov;
           grcov . --binary-path ./target/debug/ -s . -t lcov --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o /tmp/cov/tests.lcov;
       - uses: codecov/codecov-action@v3
@@ -41,6 +42,8 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: /tmp/cov/
           name: waku-bindings-codecov
-          fail_ci_if_error: true
+          # Without a token (not configured, or not exposed to this run) the upload is
+          # rate limited by codecov.io and fails for reasons unrelated to the code.
+          fail_ci_if_error: ${{ secrets.CODECOV_TOKEN != '' }}
 
 

@@ -42,14 +42,17 @@ jobs:
   test:
     name: Test
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # 1.88.0, not stable: waku-bindings pulls in wasmer 2 through rln, whose
+          # wasmer-vm needs __rust_probestack, dropped from compiler_builtins in 1.89.
           - os: ubuntu-latest
-            toolchain: stable
+            toolchain: 1.88.0
           #- os: windows-latest
           #  toolchain: stable-x86_64-pc-windows-gnu
           - os: macos-latest
-            toolchain: stable
+            toolchain: 1.88.0
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -68,10 +71,53 @@ jobs:
         continue-on-error: false
         with:
           command: build
+      # The logos-delivery crate needs liblogosdelivery; it is tested in its own job.
       - uses: actions-rs/cargo@v1
         continue-on-error: false
         with:
           command: test
+          args: --workspace --exclude logos-delivery
+
+  logos-delivery:
+    name: logos-delivery crate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      # The crate does not use the vendor submodule.
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          default: true
+          override: true
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            extra-substituters = https://cache.nix.logos.co/public
+            extra-trusted-public-keys = public:l4HrXgL4nw246+LBh2SOJyhz64BoGegOYLheT/iIAPU=
+      # The library at the revision the bindings were generated from (LOGOS_DELIVERY_REV).
+      - name: Build liblogosdelivery
+        run: |
+          rev=$(cat LOGOS_DELIVERY_REV)
+          out=$(nix build --impure --no-link --print-out-paths --expr "
+            let f = builtins.getFlake \"github:logos-messaging/logos-delivery/$rev\";
+            in f.packages.\${builtins.currentSystem}.liblogosdelivery.override {
+              enablePostgres = false;
+              enableNimDebugDlOpen = false;
+              chroniclesLogLevel = \"FATAL\";
+            }")
+          echo "LOGOS_DELIVERY_LIB_DIR=$out/lib" >> "$GITHUB_ENV"
+      # Nodes in one process share the persistence root and ports: run serially.
+      # The runner has no patchelf, so the library cannot be stamped; linking it in
+      # place is fine for this crate's own tests.
+      - run: cargo test -p logos-delivery -- --test-threads=1
+        env:
+          LOGOS_DELIVERY_ALLOW_UNSTAMPED: "1"
 
   lints:
     name: Lint
