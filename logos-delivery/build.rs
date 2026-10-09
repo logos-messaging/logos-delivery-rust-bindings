@@ -25,25 +25,14 @@ fn main() {
         other => panic!("unsupported OS for logos-delivery transport: {other}"),
     }
 
-    // Two linking modes, because dev builds and *distributable* builds want
-    // opposite things out of the library's install name / soname.
+    // Distributable builds keep the library's relocatable name and the consumer adds
+    // an rpath (cargo does not propagate `rustc-link-arg`); dev builds stamp an
+    // absolute name so consumers need no build-script glue. `lib_dir` is published
+    // as DEP_LOGOSDELIVERY_LIB_DIR for direct dependents.
     if relocatable() || target_os == "ios" || target_os == "android" {
-        // Distribution: link the shipped library in place and leave its
-        // relocatable name (@rpath on macOS, $ORIGIN soname on Linux) intact,
-        // so the consumer can copy it into its own bundle and resolve it from
-        // there. The library's own @loader_path/$ORIGIN rpath then finds
-        // librln beside it. This costs the consumer some build-script glue --
-        // on macOS it MUST add an rpath, since cargo does not propagate
-        // `rustc-link-arg` across crates -- which is exactly what the default
-        // mode below exists to avoid. `lib_dir` is published as
-        // DEP_LOGOSDELIVERY_LIB_DIR so direct dependents can locate the
-        // libraries to bundle.
         println!("cargo:rustc-link-search=native={}", lib_dir.display());
     } else {
-        // Default (dev): stamp a private copy with an ABSOLUTE install name.
-        // The propagating search + lib directives are then sufficient and
-        // consumers need zero build-script glue -- but the resulting binary
-        // hardcodes a nix store path and only runs on this machine.
+        // The binary hardcodes the store path and only runs on this machine.
         let stamped = match target_os.as_str() {
             "macos" => stamp_absolute_macos(&lib_dir, &out_dir),
             "linux" => stamp_absolute_linux(&lib_dir, &out_dir),
