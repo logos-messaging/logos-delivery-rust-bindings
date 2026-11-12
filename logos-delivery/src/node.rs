@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -6,6 +7,8 @@ use std::time::Duration;
 
 use base64::Engine;
 use futures_core::Stream;
+use futures_util::stream::try_unfold;
+use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
@@ -15,6 +18,7 @@ use crate::config::DeliveryConfig;
 use crate::error::{DeliveryError, Result};
 use crate::events::{ConnectionStatus, DeliveryEvent, ReceivedMessage, EVENT_NAMES};
 use crate::generated::api::LogosDeliveryCtx;
+use crate::store::{StoreQuery, StoreResponse};
 
 /// Capacity of the event fan-out; a receiver that falls further behind skips events.
 const EVENT_BUFFER: usize = 1024;
@@ -39,6 +43,15 @@ impl std::fmt::Display for RequestId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+/// A peer the node is connected to.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PeerInfo {
+    /// The protocol ids it serves, such as [`STORE_CODEC`](crate::STORE_CODEC).
+    pub protocols: Vec<String>,
+    /// The multiaddrs it listens on, without its `/p2p/` id.
+    pub addresses: Vec<String>,
 }
 
 /// Runs on the node's event thread: must not block.
@@ -69,6 +82,8 @@ unsafe extern "C" fn on_event(ret: c_int, msg: *const c_char, len: usize, user_d
 
 struct Inner {
     ctx: Option<LogosDeliveryCtx>,
+    /// [`DeliveryConfig::call_timeout`], the longest any call on `ctx` waits.
+    call_timeout: Duration,
     events: Arc<broadcast::Sender<DeliveryEvent>>,
     listeners: Mutex<Vec<u64>>,
     /// The `Arc` handed to the listeners as `user_data`, released once they are gone.
@@ -162,6 +177,7 @@ impl DeliveryNode {
         let node = Self {
             inner: Arc::new(Inner {
                 ctx: Some(ctx),
+                call_timeout: config.timeout(),
                 events,
                 listeners: Mutex::new(ids),
                 listener_data,
@@ -314,17 +330,80 @@ impl DeliveryNode {
             .collect())
     }
 
-    /// Dials the peer at `multiaddr`. Backed by the library's unstable kernel API.
+    /// Dials the peer at `multiaddr`. A `timeout` above the node's
+    /// [`DeliveryConfig::call_timeout`] is refused with [`DeliveryError::Peer`].
+    /// Backed by the library's unstable kernel API.
     pub async fn connect(&self, multiaddr: &str, timeout: Duration) -> Result<()> {
+        let timeout_ms =
+            kernel_timeout_ms(timeout, self.inner.call_timeout).map_err(DeliveryError::Peer)?;
         self.inner
             .ctx()
-            .waku_connect_async(
-                multiaddr.to_string(),
-                u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX),
-            )
+            .waku_connect_async(multiaddr.to_string(), timeout_ms)
             .await
             .map(|_| ())
             .map_err(DeliveryError::Peer)
+    }
+
+    /// The peers this node is connected to, by peer id. Backed by the library's
+    /// unstable kernel API.
+    pub async fn connected_peers_info(&self) -> Result<HashMap<String, PeerInfo>> {
+        let peers = self
+            .inner
+            .ctx()
+            .waku_get_connected_peers_info_async()
+            .await
+            .map_err(DeliveryError::Peer)?;
+        serde_json::from_str(&peers).map_err(|e| DeliveryError::Peer(format!("{e}, got: {peers}")))
+    }
+
+    /// One page of the messages `query` matches, from the store peer at `peer`: one or
+    /// more of its multiaddrs, comma-separated, each ending in its `/p2p/` id.
+    ///
+    /// `timeout` bounds the query. A `timeout` above the node's
+    /// [`DeliveryConfig::call_timeout`] is refused with [`DeliveryError::Store`].
+    ///
+    /// Backed by the library's kernel API, which it documents as unstable.
+    pub async fn store_query(
+        &self,
+        query: &StoreQuery,
+        peer: &str,
+        timeout: Duration,
+    ) -> Result<StoreResponse> {
+        let timeout_ms =
+            kernel_timeout_ms(timeout, self.inner.call_timeout).map_err(DeliveryError::Store)?;
+        let response = self
+            .inner
+            .ctx()
+            .waku_store_query_async(query.to_json(), peer.to_string(), timeout_ms)
+            .await
+            .map_err(DeliveryError::Store)?;
+        serde_json::from_str(&response).map_err(|e| {
+            DeliveryError::Store(format!(
+                "could not decode store response: {e}, got: {response:.512}"
+            ))
+        })
+    }
+
+    /// The pages [`DeliveryNode::store_query`] returns for `query`, each asked for with the
+    /// cursor of the page before. The stream ends after the last page, or after the error of
+    /// a page that fails. `timeout` bounds each page's query.
+    pub fn store_query_pages<'a>(
+        &'a self,
+        query: StoreQuery,
+        peer: &'a str,
+        timeout: Duration,
+    ) -> impl Stream<Item = Result<StoreResponse>> + 'a {
+        try_unfold(Some(query), move |query| async move {
+            let Some(query) = query else {
+                return Ok(None);
+            };
+            let page = self.store_query(&query, peer, timeout).await?;
+            let next = page.pagination_cursor.clone().map(|cursor| StoreQuery {
+                pagination_cursor: Some(cursor),
+                ..query
+            });
+            Ok(Some((page, next)))
+        })
     }
 
     /// Opens a reliable channel on this node.
@@ -356,5 +435,56 @@ impl DeliveryNode {
 
     pub(crate) fn ctx(&self) -> &LogosDeliveryCtx {
         self.inner.ctx()
+    }
+}
+
+/// `timeout` in the whole milliseconds a kernel call takes, rounded up so that only a zero
+/// `timeout` becomes 0. The call around it gives up at `call_timeout`: a longer one is refused.
+fn kernel_timeout_ms<T: TryFrom<u128>>(
+    timeout: Duration,
+    call_timeout: Duration,
+) -> std::result::Result<T, String> {
+    if timeout > call_timeout {
+        return Err(format!(
+            "timeout {timeout:?} is above the node's call_timeout of {call_timeout:?}"
+        ));
+    }
+    T::try_from(timeout.as_nanos().div_ceil(1_000_000))
+        .map_err(|_| format!("timeout {timeout:?} has more milliseconds than the library takes"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kernel_timeout_rounds_up_to_whole_milliseconds() {
+        let call_timeout = Duration::from_secs(60);
+        for (timeout, ms) in [
+            (Duration::ZERO, 0),
+            (Duration::from_micros(500), 1),
+            (Duration::from_millis(1), 1),
+            (Duration::from_micros(1500), 2),
+            (call_timeout, 60_000),
+        ] {
+            assert_eq!(
+                kernel_timeout_ms::<i32>(timeout, call_timeout),
+                Ok(ms),
+                "{timeout:?}"
+            );
+        }
+        assert_eq!(
+            kernel_timeout_ms::<u32>(call_timeout, call_timeout),
+            Ok(60_000)
+        );
+    }
+
+    #[test]
+    fn kernel_timeout_rejects_above_the_call_timeout() {
+        let call_timeout = Duration::from_secs(60);
+        let above = call_timeout + Duration::from_nanos(1);
+        assert!(kernel_timeout_ms::<i32>(above, call_timeout).is_err());
+        let past_i32_ms = Duration::from_millis(i32::MAX as u64 + 1);
+        assert!(kernel_timeout_ms::<i32>(past_i32_ms, Duration::MAX).is_err());
     }
 }
