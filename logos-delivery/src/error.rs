@@ -21,6 +21,8 @@ pub enum DeliveryError {
     VersionMismatch { expected: String, found: String },
     #[error("peer operation failed: {0}")]
     Peer(String),
+    #[error("store query failed: {0}")]
+    Store(String),
     #[error("could not read the connection status: {0}")]
     Status(String),
     #[error("timed out waiting for: {0}")]

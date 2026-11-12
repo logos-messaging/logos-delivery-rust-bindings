@@ -9,6 +9,7 @@
 //! (`Runtime::block_on`), for background tasks such as [`BlockingDeliveryNode::events`]
 //! to make progress.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,7 +22,8 @@ use crate::channel::ChannelConfig;
 use crate::config::DeliveryConfig;
 use crate::error::Result;
 use crate::events::{ConnectionStatus, DeliveryEvent, ReceivedMessage};
-use crate::node::{DeliveryNode, RequestId};
+use crate::node::{DeliveryNode, PeerInfo, RequestId};
+use crate::store::{StoreQuery, StoreResponse};
 use crate::Channel;
 
 /// Items buffered for a consumer before new ones are dropped.
@@ -84,6 +86,21 @@ impl BlockingDeliveryNode {
     /// Dials the peer at `multiaddr`.
     pub fn connect(&self, multiaddr: &str, timeout: Duration) -> Result<()> {
         self.block_on(self.shared.node.connect(multiaddr, timeout))
+    }
+
+    /// The peers this node is connected to, by peer id.
+    pub fn connected_peers_info(&self) -> Result<HashMap<String, PeerInfo>> {
+        self.block_on(self.shared.node.connected_peers_info())
+    }
+
+    /// One page of the messages `query` matches, from the store peer at `peer`.
+    pub fn store_query(
+        &self,
+        query: &StoreQuery,
+        peer: &str,
+        timeout: Duration,
+    ) -> Result<StoreResponse> {
+        self.block_on(self.shared.node.store_query(query, peer, timeout))
     }
 
     /// Stops the node. Clones share it, so this ends delivery for all of them.

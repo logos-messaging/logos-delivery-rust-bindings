@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -6,6 +7,7 @@ use std::time::Duration;
 
 use base64::Engine;
 use futures_core::Stream;
+use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
@@ -15,6 +17,7 @@ use crate::config::DeliveryConfig;
 use crate::error::{DeliveryError, Result};
 use crate::events::{ConnectionStatus, DeliveryEvent, ReceivedMessage, EVENT_NAMES};
 use crate::generated::api::LogosDeliveryCtx;
+use crate::store::{StoreQuery, StoreResponse};
 
 /// Capacity of the event fan-out; a receiver that falls further behind skips events.
 const EVENT_BUFFER: usize = 1024;
@@ -39,6 +42,15 @@ impl std::fmt::Display for RequestId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+/// A peer the node is connected to.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PeerInfo {
+    /// The protocol ids it serves, such as [`STORE_CODEC`](crate::STORE_CODEC).
+    pub protocols: Vec<String>,
+    /// The multiaddrs it listens on, without its `/p2p/` id.
+    pub addresses: Vec<String>,
 }
 
 /// Runs on the node's event thread: must not block.
@@ -325,6 +337,41 @@ impl DeliveryNode {
             .await
             .map(|_| ())
             .map_err(DeliveryError::Peer)
+    }
+
+    /// The peers this node is connected to, by peer id. Backed by the library's
+    /// unstable kernel API.
+    pub async fn connected_peers_info(&self) -> Result<HashMap<String, PeerInfo>> {
+        let peers = self
+            .inner
+            .ctx()
+            .waku_get_connected_peers_info_async()
+            .await
+            .map_err(DeliveryError::Peer)?;
+        serde_json::from_str(&peers).map_err(|e| DeliveryError::Peer(format!("{e}, got: {peers}")))
+    }
+
+    /// One page of the messages `query` matches, from the store peer at `peer`: a
+    /// multiaddr that ends in the peer's `/p2p/` id.
+    ///
+    /// Backed by the library's kernel API, which it documents as unstable.
+    pub async fn store_query(
+        &self,
+        query: &StoreQuery,
+        peer: &str,
+        timeout: Duration,
+    ) -> Result<StoreResponse> {
+        let response = self
+            .inner
+            .ctx()
+            .waku_store_query_async(
+                query.to_json(),
+                peer.to_string(),
+                i32::try_from(timeout.as_millis()).unwrap_or(i32::MAX),
+            )
+            .await
+            .map_err(DeliveryError::Store)?;
+        serde_json::from_str(&response).map_err(|e| DeliveryError::Store(e.to_string()))
     }
 
     /// Opens a reliable channel on this node.

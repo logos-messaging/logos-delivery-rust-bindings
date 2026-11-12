@@ -38,10 +38,12 @@ mod events;
 #[rustfmt::skip]
 mod generated;
 mod node;
+mod store;
 mod version;
 
 pub use channel::{Channel, ChannelConfig, ChannelEvent};
 pub use config::DeliveryConfig;
 pub use error::{DeliveryError, Result};
 pub use events::{ConnectionStatus, DeliveryEvent, MessageSource, ReceivedMessage};
-pub use node::{DeliveryNode, RequestId};
+pub use node::{DeliveryNode, PeerInfo, RequestId};
+pub use store::{StoreQuery, StoreResponse, StoredMessage, STORE_CODEC};

@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use logos_delivery::{
-    ChannelConfig, ConnectionStatus, DeliveryConfig, DeliveryEvent, DeliveryNode,
+    ChannelConfig, ConnectionStatus, DeliveryConfig, DeliveryEvent, DeliveryNode, StoreQuery,
+    STORE_CODEC,
 };
 use serial_test::serial;
 use tokio_stream::StreamExt;
@@ -172,4 +173,91 @@ async fn channel_created_with_its_event_stream() {
     assert!(channel.exists().await.expect("exists"));
     channel.close().await.expect("close");
     node.shutdown().await.expect("shutdown");
+}
+
+#[tokio::test]
+#[serial]
+async fn store_peer_returns_a_published_message_by_its_hash() {
+    let db = "sqlite://./data-logos-delivery-test/store.sqlite3";
+    let store_config = config(20190)
+        .option("store", true)
+        .option("storeMessageDbUrl", db);
+    let store = DeliveryNode::start(store_config).await.expect("store node");
+    let sender = DeliveryNode::start(config(20200)).await.expect("sender");
+
+    let address = store.listen_addresses().await.expect("addresses")[0].clone();
+    sender.connect(&address, TIMEOUT).await.expect("connect");
+    sender
+        .wait_connected(TIMEOUT)
+        .await
+        .expect("sender connected");
+
+    store.subscribe(TOPIC).await.expect("subscribe");
+    sender.subscribe(TOPIC).await.expect("subscribe");
+    let mut sender_events = sender.events();
+    // Let the mesh form, and the peers exchange their protocols, before publishing.
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let peers = sender.connected_peers_info().await.expect("peers");
+    let (peer_id, info) = peers
+        .iter()
+        .find(|(_, info)| info.protocols.iter().any(|p| p == STORE_CODEC))
+        .expect("a connected store peer");
+    let store_peer = format!("{}/p2p/{peer_id}", info.addresses[0]);
+
+    let request_id = sender.publish(TOPIC, b"kept").await.expect("publish");
+    let hash = tokio::time::timeout(TIMEOUT, async {
+        loop {
+            match sender_events.recv().await {
+                Ok(DeliveryEvent::MessageSent {
+                    request_id: id,
+                    message_hash,
+                })
+                | Ok(DeliveryEvent::MessagePropagated {
+                    request_id: id,
+                    message_hash,
+                }) if id == request_id.0 => break message_hash,
+                Ok(_) => {}
+                Err(e) => panic!("event stream ended: {e}"),
+            }
+        }
+    })
+    .await
+    .expect("sent in time");
+
+    let query = StoreQuery {
+        include_data: true,
+        message_hashes: vec![hash.clone()],
+        ..Default::default()
+    };
+    // The store node keeps the message once relay hands it over.
+    let stored = tokio::time::timeout(TIMEOUT, async {
+        loop {
+            let page = sender
+                .store_query(&query, &store_peer, TIMEOUT)
+                .await
+                .expect("store query");
+            if let Some(stored) = page.messages.into_iter().next() {
+                break stored;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    .expect("stored in time");
+    assert_eq!(stored.message_hash, hash);
+    assert_eq!(stored.message.expect("included data").payload, b"kept");
+
+    let unsent = StoreQuery {
+        message_hashes: vec![format!("0x{}", "ff".repeat(32))],
+        ..query
+    };
+    let page = sender
+        .store_query(&unsent, &store_peer, TIMEOUT)
+        .await
+        .expect("store query");
+    assert!(page.messages.is_empty(), "the query matches by hash");
+
+    sender.shutdown().await.expect("shutdown");
+    store.shutdown().await.expect("shutdown");
 }
