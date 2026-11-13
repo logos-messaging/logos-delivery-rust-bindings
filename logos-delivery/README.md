@@ -26,6 +26,13 @@ driven elsewhere. It mirrors the node (`subscribe`, `publish`, `wait_connected`,
 bounded `crossbeam_channel::Receiver`s fed off the FFI thread. Its methods, and dropping the
 last clone, panic inside a tokio runtime (like `Handle::block_on`): use `DeliveryNode` there.
 
+## Kernel API
+
+`listen_addresses`, `connect`, `connected_peers_info` and `store_query` are backed by the
+library's kernel API, which it documents as unstable. `store_query` returns one page of the
+messages a store peer keeps. A store peer lists `STORE_CODEC` among its `PeerInfo::protocols`,
+and is addressed by one of its `addresses` followed by `/p2p/<peer id>`.
+
 ## Linking
 
 Set `LOGOS_DELIVERY_LIB_DIR` to the directory holding `liblogosdelivery` (an absolute path; a relative one is resolved against the directory cargo is run from)
