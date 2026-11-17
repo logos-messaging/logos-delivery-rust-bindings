@@ -22,10 +22,16 @@ pub struct ReceivedMessage {
     #[serde(deserialize_with = "base64_bytes")]
     pub payload: Vec<u8>,
     pub content_topic: String,
+    #[serde(default, deserialize_with = "base64_bytes")]
+    pub meta: Vec<u8>,
+    #[serde(default)]
+    pub version: u32,
     #[serde(default)]
     pub timestamp: i64,
     #[serde(default)]
     pub ephemeral: bool,
+    #[serde(default, deserialize_with = "base64_bytes")]
+    pub proof: Vec<u8>,
 }
 
 /// Everything the node reports asynchronously. Unknown event types are dropped.
@@ -119,18 +125,23 @@ pub(crate) const EVENT_NAMES: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
+    use base64::engine::general_purpose::STANDARD;
+    use serde_json::json;
+
     use super::*;
 
     #[test]
     fn parses_message_received() {
-        let json = r#"{"eventType":"message_received","messageHash":"0xab","source":"live",
-            "message":{"payload":"aGk=","contentTopic":"/a/1/b/proto","version":0,
-            "timestamp":1,"ephemeral":false,"meta":"","proof":""}}"#;
-        match serde_json::from_str::<DeliveryEvent>(json).unwrap() {
+        let json = json!({"eventType": "message_received", "messageHash": "0xab", "source": "live",
+            "message": {"payload": STANDARD.encode(b"hi"), "contentTopic": "/a/1/b/proto",
+                "version": 0, "timestamp": 1, "ephemeral": false,
+                "meta": STANDARD.encode(b"meta"), "proof": ""}});
+        match serde_json::from_value::<DeliveryEvent>(json).unwrap() {
             DeliveryEvent::MessageReceived {
                 message, source, ..
             } => {
                 assert_eq!(message.payload, b"hi");
+                assert_eq!(message.meta, b"meta");
                 assert_eq!(source, MessageSource::Live);
             }
             other => panic!("unexpected: {other:?}"),
