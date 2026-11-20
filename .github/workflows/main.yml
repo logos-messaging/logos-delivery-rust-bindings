@@ -99,7 +99,7 @@ jobs:
         with:
           extra_nix_config: |
             extra-substituters = https://cache.nix.logos.co/public
-            extra-trusted-public-keys = public:l4HrXgL4nw246+LBh2SOJyhz64BoGegOYLheT/iIAPU=
+            extra-trusted-public-keys = public:zaDAOkd+E3cQyFm9J7qejQYd9HoLJc1SJvnk68hNWeI=
       # The library at the revision the bindings were generated from (LOGOS_DELIVERY_REV).
       - name: Build liblogosdelivery
         run: |
