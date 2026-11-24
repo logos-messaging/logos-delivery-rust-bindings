@@ -43,8 +43,8 @@ fn published_message_reaches_peer_through_inbound_queue() {
     // Let the mesh form before publishing.
     std::thread::sleep(Duration::from_secs(5));
 
-    let request_id = sender.publish(TOPIC, b"ping").expect("publish");
-    assert!(!request_id.0.is_empty());
+    let hash = sender.publish(TOPIC, b"ping").expect("publish");
+    assert!(hash.0.starts_with("0x"));
 
     match inbound.recv_timeout(TIMEOUT) {
         Ok(payload) => assert_eq!(payload, b"ping"),

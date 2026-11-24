@@ -44,6 +44,18 @@ const NIMFFI_RET_ERR: c_int = 1;
 const NIMFFI_RET_MISSING_CALLBACK: c_int = 2;
 #[allow(dead_code)]
 const NIMFFI_RET_STALE_WARN: c_int = 3;
+#[allow(dead_code)]
+const NIMFFI_RET_TIMEOUT: c_int = 4;
+#[allow(dead_code)]
+const NIMFFI_RET_CLOSED: c_int = 5;
+#[allow(dead_code)]
+const NIMFFI_RET_INVALID_CTX: c_int = 6;
+#[allow(dead_code)]
+const NIMFFI_RET_BUSY: c_int = 7;
+#[allow(dead_code)]
+const NIMFFI_RET_QUEUE_FULL: c_int = 8;
+#[allow(dead_code)]
+const NIMFFI_RET_TOO_LARGE: c_int = 9;
 
 unsafe extern "C" fn on_result(
     ret: c_int,
@@ -1089,6 +1101,44 @@ impl LogosDeliveryCtx {
         let ptr = self.ptr as usize;
         let raw_bytes = ffi_call_async(self.timeout, move |cb, ud| unsafe {
             ffi::waku_lightpush_publish(ptr as *mut c_void, cb, ud, req_bytes.as_ptr(), req_bytes.len())
+        }).await?;
+        decode_cbor::<String>(&raw_bytes)
+    }
+
+    pub fn waku_mix_get_peer_record(&self) -> Result<String, String> {
+        let req = WakuMixGetPeerRecordReq {};
+        let req_bytes = encode_cbor(&req)?;
+        let raw_bytes = ffi_call_sync(self.timeout, |cb, ud| unsafe {
+            ffi::waku_mix_get_peer_record(self.ptr, cb, ud, req_bytes.as_ptr(), req_bytes.len())
+        })?;
+        decode_cbor::<String>(&raw_bytes)
+    }
+
+    pub async fn waku_mix_get_peer_record_async(&self) -> Result<String, String> {
+        let req = WakuMixGetPeerRecordReq {};
+        let req_bytes = encode_cbor(&req)?;
+        let ptr = self.ptr as usize;
+        let raw_bytes = ffi_call_async(self.timeout, move |cb, ud| unsafe {
+            ffi::waku_mix_get_peer_record(ptr as *mut c_void, cb, ud, req_bytes.as_ptr(), req_bytes.len())
+        }).await?;
+        decode_cbor::<String>(&raw_bytes)
+    }
+
+    pub fn waku_mix_add_peer(&self, record_json: String) -> Result<String, String> {
+        let req = WakuMixAddPeerReq { record_json };
+        let req_bytes = encode_cbor(&req)?;
+        let raw_bytes = ffi_call_sync(self.timeout, |cb, ud| unsafe {
+            ffi::waku_mix_add_peer(self.ptr, cb, ud, req_bytes.as_ptr(), req_bytes.len())
+        })?;
+        decode_cbor::<String>(&raw_bytes)
+    }
+
+    pub async fn waku_mix_add_peer_async(&self, record_json: String) -> Result<String, String> {
+        let req = WakuMixAddPeerReq { record_json };
+        let req_bytes = encode_cbor(&req)?;
+        let ptr = self.ptr as usize;
+        let raw_bytes = ffi_call_async(self.timeout, move |cb, ud| unsafe {
+            ffi::waku_mix_add_peer(ptr as *mut c_void, cb, ud, req_bytes.as_ptr(), req_bytes.len())
         }).await?;
         decode_cbor::<String>(&raw_bytes)
     }

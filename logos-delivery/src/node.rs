@@ -35,11 +35,22 @@ extern "C" {
     fn logosdelivery_remove_event_listener(ctx: *mut c_void, id: u64) -> c_int;
 }
 
-/// Identifier the node assigns to a send, echoed by the delivery events.
+/// Identifier the node assigns to a channel send, echoed by the channel events.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RequestId(pub String);
 
 impl std::fmt::Display for RequestId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// The hash of a published message, as `0x`-prefixed lowercase hex. The node
+/// fixes it at publish, and every send event of the message carries it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MessageHash(pub String);
+
+impl std::fmt::Display for MessageHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
@@ -236,9 +247,10 @@ impl DeliveryNode {
             .map_err(DeliveryError::Unsubscribe)
     }
 
-    /// Publishes `payload` on `content_topic`. Follow its fate through the
-    /// `Message*` events carrying the returned id.
-    pub async fn publish(&self, content_topic: &str, payload: &[u8]) -> Result<RequestId> {
+    /// Publishes `payload` on `content_topic` and returns its message hash. Follow
+    /// its fate through the `Message*` events carrying that hash. A refused
+    /// message gets an error and no event.
+    pub async fn publish(&self, content_topic: &str, payload: &[u8]) -> Result<MessageHash> {
         self.send(content_topic, payload, false).await
     }
 
@@ -247,7 +259,7 @@ impl DeliveryNode {
         &self,
         content_topic: &str,
         payload: &[u8],
-    ) -> Result<RequestId> {
+    ) -> Result<MessageHash> {
         self.send(content_topic, payload, true).await
     }
 
@@ -256,7 +268,7 @@ impl DeliveryNode {
         content_topic: &str,
         payload: &[u8],
         ephemeral: bool,
-    ) -> Result<RequestId> {
+    ) -> Result<MessageHash> {
         let message = json!({
             "contentTopic": content_topic,
             "payload": base64::engine::general_purpose::STANDARD.encode(payload),
@@ -266,7 +278,7 @@ impl DeliveryNode {
             .ctx()
             .send_async(message.to_string())
             .await
-            .map(RequestId)
+            .map(MessageHash)
             .map_err(DeliveryError::Publish)
     }
 

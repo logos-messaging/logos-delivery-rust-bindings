@@ -254,6 +254,15 @@ pub struct WakuLightpushPublishReq {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WakuMixGetPeerRecordReq {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WakuMixAddPeerReq {
+    #[serde(rename = "recordJson")]
+    pub record_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WakuFilterSubscribeReq {
     #[serde(rename = "pubSubTopic")]
     pub pub_sub_topic: String,

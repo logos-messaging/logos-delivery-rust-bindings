@@ -22,7 +22,7 @@ use crate::channel::ChannelConfig;
 use crate::config::DeliveryConfig;
 use crate::error::Result;
 use crate::events::{ConnectionStatus, DeliveryEvent, ReceivedMessage};
-use crate::node::{DeliveryNode, PeerInfo, RequestId};
+use crate::node::{DeliveryNode, MessageHash, PeerInfo, RequestId};
 use crate::store::{StoreQuery, StoreResponse};
 use crate::Channel;
 
@@ -61,11 +61,11 @@ impl BlockingDeliveryNode {
         self.block_on(self.shared.node.unsubscribe(content_topic))
     }
 
-    pub fn publish(&self, content_topic: &str, payload: &[u8]) -> Result<RequestId> {
+    pub fn publish(&self, content_topic: &str, payload: &[u8]) -> Result<MessageHash> {
         self.block_on(self.shared.node.publish(content_topic, payload))
     }
 
-    pub fn publish_ephemeral(&self, content_topic: &str, payload: &[u8]) -> Result<RequestId> {
+    pub fn publish_ephemeral(&self, content_topic: &str, payload: &[u8]) -> Result<MessageHash> {
         self.block_on(self.shared.node.publish_ephemeral(content_topic, payload))
     }
 

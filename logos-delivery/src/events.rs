@@ -8,6 +8,15 @@ pub enum ConnectionStatus {
     Connected,
 }
 
+/// Why a message that `publish` accepted failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum MessageErrorKind {
+    /// No peer took the message within the delivery window.
+    NotPropagated,
+    /// The message propagated, but no store node reported it within its window.
+    NotStored,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageSource {
@@ -35,28 +44,21 @@ pub struct ReceivedMessage {
 }
 
 /// Everything the node reports asynchronously. Unknown event types are dropped.
+///
+/// The send events carry the message hash that `publish` returned.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "eventType", rename_all = "snake_case")]
 pub enum DeliveryEvent {
+    /// A store node, or the mix exit for a send over mix, confirmed the message.
     #[serde(rename_all = "camelCase")]
-    MessageQueued {
-        request_id: String,
-        message_hash: String,
-    },
+    MessageSent { message_hash: String },
+    /// The message reached at least one peer.
     #[serde(rename_all = "camelCase")]
-    MessageSent {
-        request_id: String,
-        message_hash: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    MessagePropagated {
-        request_id: String,
-        message_hash: String,
-    },
+    MessagePropagated { message_hash: String },
     #[serde(rename_all = "camelCase")]
     MessageError {
-        request_id: String,
         message_hash: String,
+        kind: MessageErrorKind,
         error: String,
     },
     #[serde(rename_all = "camelCase")]
@@ -109,7 +111,6 @@ fn base64_bytes<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
 
 /// Names under which the library publishes its events.
 pub(crate) const EVENT_NAMES: &[&str] = &[
-    "onMessageQueued",
     "onMessageSent",
     "onMessagePropagated",
     "onMessageError",
@@ -159,6 +160,24 @@ mod tests {
         assert!(matches!(
             serde_json::from_str::<DeliveryEvent>(json).unwrap(),
             DeliveryEvent::ChannelMessageLost { .. }
+        ));
+    }
+
+    #[test]
+    fn parses_send_events() {
+        let json = r#"{"eventType":"message_propagated","messageHash":"0xab"}"#;
+        assert!(matches!(
+            serde_json::from_str::<DeliveryEvent>(json).unwrap(),
+            DeliveryEvent::MessagePropagated { message_hash } if message_hash == "0xab"
+        ));
+        let json =
+            r#"{"eventType":"message_error","messageHash":"0xab","kind":"NotStored","error":"e"}"#;
+        assert!(matches!(
+            serde_json::from_str::<DeliveryEvent>(json).unwrap(),
+            DeliveryEvent::MessageError {
+                kind: MessageErrorKind::NotStored,
+                ..
+            }
         ));
     }
 
