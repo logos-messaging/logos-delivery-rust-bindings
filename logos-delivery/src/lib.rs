@@ -44,6 +44,8 @@ mod version;
 pub use channel::{Channel, ChannelConfig, ChannelEvent};
 pub use config::DeliveryConfig;
 pub use error::{DeliveryError, Result};
-pub use events::{ConnectionStatus, DeliveryEvent, MessageSource, ReceivedMessage};
-pub use node::{DeliveryNode, PeerInfo, RequestId};
+pub use events::{
+    ConnectionStatus, DeliveryEvent, MessageErrorKind, MessageSource, ReceivedMessage,
+};
+pub use node::{DeliveryNode, MessageHash, PeerInfo, RequestId};
 pub use store::{StoreQuery, StoreResponse, StoredMessage, STORE_CODEC};

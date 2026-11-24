@@ -9,7 +9,7 @@ node.wait_connected(Duration::from_secs(30)).await?; // or DeliveryConfig::wait_
 
 node.subscribe("/my-app/1/chat/proto").await?;
 let mut messages = Box::pin(node.messages());       // Stream<Item = ReceivedMessage>
-let request_id = node.publish("/my-app/1/chat/proto", b"hi").await?;
+let hash = node.publish("/my-app/1/chat/proto", b"hi").await?; // MessageHash, keys the Message* events
 let mut events = node.events();                     // broadcast::Receiver<DeliveryEvent>
 
 let channel = node.create_channel(ChannelConfig { /* id, content_topic, sender_id */ }).await?;

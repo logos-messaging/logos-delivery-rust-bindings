@@ -81,7 +81,7 @@ async fn published_message_reaches_peer() {
     // Let the mesh form before publishing.
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    let request_id = sender.publish(TOPIC, b"ping").await.expect("publish");
+    let hash = sender.publish(TOPIC, b"ping").await.expect("publish");
 
     let message = tokio::time::timeout(TIMEOUT, messages.next())
         .await
@@ -90,13 +90,13 @@ async fn published_message_reaches_peer() {
     assert_eq!(message.payload, b"ping");
     assert_eq!(message.content_topic, TOPIC);
 
-    // The sender reports the fate of the request it was handed.
+    // The sender reports the fate of the message under the hash it was handed.
     let outcome = tokio::time::timeout(TIMEOUT, async {
         loop {
             match sender_events.recv().await {
-                Ok(DeliveryEvent::MessageSent { request_id: id, .. })
-                | Ok(DeliveryEvent::MessagePropagated { request_id: id, .. })
-                    if id == request_id.0 =>
+                Ok(DeliveryEvent::MessageSent { message_hash })
+                | Ok(DeliveryEvent::MessagePropagated { message_hash })
+                    if message_hash == hash.0 =>
                 {
                     break;
                 }
@@ -217,18 +217,16 @@ async fn store_peer_returns_published_messages_by_hash_and_across_pages() {
         .duration_since(UNIX_EPOCH)
         .expect("after 1970")
         .as_nanos();
-    let request_id = sender.publish(TOPIC, b"kept").await.expect("publish");
+    let published = sender.publish(TOPIC, b"kept").await.expect("publish");
     let hash = tokio::time::timeout(TIMEOUT, async {
         loop {
             match sender_events.recv().await {
-                Ok(DeliveryEvent::MessageSent {
-                    request_id: id,
-                    message_hash,
-                })
-                | Ok(DeliveryEvent::MessagePropagated {
-                    request_id: id,
-                    message_hash,
-                }) if id == request_id.0 => break message_hash,
+                Ok(DeliveryEvent::MessageSent { message_hash })
+                | Ok(DeliveryEvent::MessagePropagated { message_hash })
+                    if message_hash == published.0 =>
+                {
+                    break message_hash
+                }
                 Ok(_) => {}
                 Err(e) => panic!("event stream ended: {e}"),
             }
