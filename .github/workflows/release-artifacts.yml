@@ -1,0 +1,77 @@
+name: Release libwaku artifacts
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-x86_64:
+    name: Build libwaku (Linux x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git libpcre3-dev libssl-dev pkg-config
+      - name: Initialize vendor dependencies
+        run: cd waku-sys/vendor && make update
+      - name: Build libwaku
+        run: cd waku-sys/vendor && make libwaku STATIC=0 MAKEFLAGS="-j$(nproc)"
+      - name: Prepare artifact
+        run: cp waku-sys/vendor/build/libwaku.so libwaku-linux-x86_64.so
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: libwaku-linux-x86_64.so
+
+  build-linux-arm64:
+    name: Build libwaku (Linux ARM64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git libpcre3-dev libssl-dev pkg-config
+      - name: Initialize vendor dependencies
+        run: cd waku-sys/vendor && make update
+      - name: Build libwaku
+        run: cd waku-sys/vendor && make libwaku STATIC=0 MAKEFLAGS="-j$(nproc)"
+      - name: Prepare artifact
+        run: cp waku-sys/vendor/build/libwaku.so libwaku-linux-arm64.so
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: libwaku-linux-arm64.so
+
+  build-macos-arm64:
+    name: Build libwaku (macOS ARM64)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: brew install pcre openssl@3 pkg-config
+      - name: Initialize vendor dependencies
+        run: cd waku-sys/vendor && make update
+      - name: Build libwaku
+        run: cd waku-sys/vendor && make libwaku STATIC=0 MAKEFLAGS="-j$(sysctl -n hw.ncpu)"
+      - name: Prepare artifact
+        run: cp waku-sys/vendor/build/libwaku.dylib libwaku-macos-arm64.dylib
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: libwaku-macos-arm64.dylib

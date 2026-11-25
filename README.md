@@ -24,3 +24,15 @@ Rust layer on top of [`logos-messaging-nim`](https://github.com/logos-messaging/
 Private. Secure. Runs anywhere.
 
 Read the [Waku docs](https://docs.waku.org/)
+
+## Pre-built libwaku artifacts
+
+Pre-compiled `libwaku` shared libraries are available as GitHub Release assets for each tagged version:
+
+| Platform | Artifact |
+|----------|----------|
+| Linux x86_64 | `libwaku-linux-x86_64.so` |
+| Linux ARM64 | `libwaku-linux-arm64.so` |
+| macOS ARM64 | `libwaku-macos-arm64.dylib` |
+
+Download them from the [Releases](https://github.com/logos-messaging/logos-delivery-rust-bindings/releases) page.
