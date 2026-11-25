@@ -46,6 +46,7 @@ async fn main() -> Result<(), Error> {
                     WakuEvent::ConnectionChange(_evt) => {
                         // dbg!("Conn change evt", evt);
                     }
+                    WakuEvent::NodeHealthChange(_evt) => {}
                     WakuEvent::Unrecognized(err) => panic!("Unrecognized waku event: {:?}", err),
                     _ => panic!("event case not expected"),
                 };
@@ -75,6 +76,7 @@ async fn main() -> Result<(), Error> {
                     WakuEvent::ConnectionChange(_evt) => {
                         // dbg!("Conn change evt", evt);
                     }
+                    WakuEvent::NodeHealthChange(_evt) => {}
                     WakuEvent::Unrecognized(err) => panic!("Unrecognized waku event: {:?}", err),
                     _ => panic!("event case not expected"),
                 };

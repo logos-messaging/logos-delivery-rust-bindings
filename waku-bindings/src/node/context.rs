@@ -49,7 +49,7 @@ impl WakuNodeContext {
             *boxed_closure = Box::new(closure);
             unsafe {
                 let cb = get_trampoline(&(*boxed_closure));
-                waku_sys::waku_set_event_callback(
+                waku_sys::set_event_callback(
                     self.obj_ptr,
                     cb,
                     &mut (*boxed_closure) as *mut _ as *mut c_void,

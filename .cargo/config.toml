@@ -2,3 +2,8 @@
 # when using osx, we need to link against some golang libraries, it did just work with this missing flags
 # from: https://github.com/golang/go/issues/42459
 rustflags = ["-C", "link-args=-framework CoreFoundation -framework Security -framework CoreServices -lresolv"]
+
+[target.x86_64-unknown-linux-gnu]
+# wasmer v2 references __rust_probestack which lld (Rust's default on Linux) can't resolve.
+# Force GNU bfd linker to avoid the undefined symbol error.
+rustflags = ["-C", "link-arg=-fuse-ld=bfd"]

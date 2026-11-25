@@ -1,7 +1,7 @@
 use crate::general::libwaku_response::LibwakuResponse;
 
 use std::{slice, str};
-use waku_sys::WakuCallBack;
+use waku_sys::FFICallBack;
 
 unsafe extern "C" fn trampoline<F>(
     ret_code: ::std::os::raw::c_int,
@@ -26,7 +26,7 @@ unsafe extern "C" fn trampoline<F>(
     closure(result);
 }
 
-pub fn get_trampoline<F>(_closure: &F) -> WakuCallBack
+pub fn get_trampoline<F>(_closure: &F) -> FFICallBack
 where
     F: FnMut(LibwakuResponse),
 {
@@ -57,10 +57,10 @@ macro_rules! handle_ffi_call {
         let code = unsafe {
             let cb = get_trampoline(&closure);
             $waku_fn(
-                $ctx,           // Pass the context
-                $($($arg),*,)?  // Expand the variadic arguments if provided
-                cb,             // Pass the callback trampoline
-                &mut closure as *mut _ as *mut c_void
+                $ctx,                                   // Pass the context
+                cb,                                     // Pass the callback trampoline
+                &mut closure as *mut _ as *mut c_void,  // Pass the user data
+                $($($arg),*)?                           // Expand the variadic arguments if provided
             )
         };
 

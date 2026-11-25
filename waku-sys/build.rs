@@ -97,8 +97,30 @@ fn generate_bindgen_code(project_dir: &Path) {
     );
     println!("cargo:rustc-link-lib=static=natpmp");
 
+    // Link librln (built by `make librln` as part of `make libwaku`)
+    // The file is named librln_v<version>.a and lives in the vendor root.
+    if let Ok(entries) = std::fs::read_dir(&nwaku_path) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with("librln_") && name_str.ends_with(".a") {
+                let lib_name = name_str.trim_start_matches("lib").trim_end_matches(".a");
+                println!("cargo:rustc-link-search=native={}", nwaku_path.display());
+                println!("cargo:rustc-link-lib=static={}", lib_name);
+                break;
+            }
+        }
+    }
+
     println!("cargo:rustc-link-lib=dl");
     println!("cargo:rustc-link-lib=m");
+    // nim-lsquic embeds BoringSSL (C++) — requires C++ runtime
+    let cpp_lib = if cfg!(target_os = "macos") {
+        "c++"
+    } else {
+        "stdc++"
+    };
+    println!("cargo:rustc-link-lib={}", cpp_lib);
 
     println!(
         "cargo:rustc-link-search=native={}",

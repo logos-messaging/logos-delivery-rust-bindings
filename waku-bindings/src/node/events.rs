@@ -27,6 +27,9 @@ pub enum WakuEvent {
     #[serde(rename = "connection_change")]
     ConnectionChange(ConnectionChangeEvent),
 
+    #[serde(rename = "node_health_change")]
+    NodeHealthChange(NodeHealthChangeEvent),
+
     Unrecognized(serde_json::Value),
 }
 
@@ -56,10 +59,15 @@ pub struct TopicHealthEvent {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionChangeEvent {
-    /// The pubsub topic on which the message was received
     pub peer_id: String,
-    /// The message hash
     pub peer_event: String,
+}
+
+/// Type of `event` field for a `node_health_change` event
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeHealthChangeEvent {
+    pub status: String,
 }
 
 #[cfg(test)]

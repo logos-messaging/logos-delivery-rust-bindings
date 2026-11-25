@@ -1,18 +1,19 @@
 mod protocol;
 
 use crate::protocol::{Chat2Message, TOY_CHAT_CONTENT_TOPIC};
-use tokio::task;
+use chrono::Utc;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use prost::Message;
-use chrono::Utc;
 use std::io::Write;
+use std::os::unix::io::IntoRawFd;
 use std::sync::{Arc, RwLock};
-use std::{error::Error, io};
 use std::time::Duration;
+use std::{error::Error, io};
+use tokio::task;
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
@@ -23,8 +24,8 @@ use tui::{
 };
 use unicode_width::UnicodeWidthStr;
 use waku::{
-    general::pubsubtopic::PubsubTopic, general::Result, waku_new, Initialized, LibwakuResponse, Running, WakuEvent,
-    WakuMessage, WakuNodeConfig, WakuNodeHandle,
+    general::pubsubtopic::PubsubTopic, general::Result, waku_new, Initialized, LibwakuResponse,
+    Running, WakuEvent, WakuMessage, WakuNodeConfig, WakuNodeHandle,
 };
 
 enum InputMode {
@@ -55,23 +56,21 @@ impl App<Initialized> {
             tcp_port: Some(60010),
             cluster_id: Some(16),
             shards: vec![1, 32, 64, 128, 256],
+            num_shards_in_network: Some(1024),
             // node_key: Some(SecretKey::from_str("2fc0515879e52b7b73297cfd6ab3abf7c344ef84b7a90ff6f4cc19e05a198027").unwrap()),
             max_message_size: Some("1024KiB".to_string()),
             relay_topics: vec![String::from(&pubsub_topic)],
             log_level: Some("FATAL"), // Supported: TRACE, DEBUG, INFO, NOTICE, WARN, ERROR or FATAL
-    
             keep_alive: Some(true),
-    
             // Discovery
             dns_discovery: Some(true),
             dns_discovery_url: Some("enrtree://AMOJVZX4V6EXP7NTJPMAYJYST2QP6AJXYW76IU6VGJS7UVSNDYZG4@boot.prod.status.nodes.status.im"),
             // discv5_discovery: Some(true),
             // discv5_udp_port: Some(9001),
             // discv5_enr_auto_update: Some(false),
-    
             ..Default::default()
         })).await?;
-        
+
         Ok(App {
             input: String::new(),
             input_mode: InputMode::Normal,
@@ -82,17 +81,15 @@ impl App<Initialized> {
     }
 
     async fn start_waku_node(self) -> Result<App<Running>> {
-
         let shared_messages = Arc::clone(&self.messages);
 
-        self.waku.set_event_callback(move|response| {
+        self.waku.set_event_callback(move |response| {
             if let LibwakuResponse::Success(v) = response {
-                let event: WakuEvent =
-                    serde_json::from_str(v.unwrap().as_str()).expect("failed parsing event in set_event_callback");
+                let event: WakuEvent = serde_json::from_str(v.unwrap().as_str())
+                    .expect("failed parsing event in set_event_callback");
 
                 match event {
                     WakuEvent::WakuMessage(evt) => {
-
                         if evt.waku_message.content_topic != TOY_CHAT_CONTENT_TOPIC {
                             return; // skip the messages that don't belong to the toy chat
                         }
@@ -110,13 +107,14 @@ impl App<Initialized> {
                                 write!(out, "{e:?}").unwrap();
                             }
                         }
-                    },
+                    }
                     WakuEvent::RelayTopicHealthChange(_evt) => {
                         // dbg!("Relay topic change evt", evt);
-                    },
+                    }
                     WakuEvent::ConnectionChange(_evt) => {
                         // dbg!("Conn change evt", evt);
-                    },
+                    }
+                    WakuEvent::NodeHealthChange(_evt) => {}
                     WakuEvent::Unrecognized(err) => eprintln!("Unrecognized waku event: {:?}", err),
                     _ => eprintln!("event case not expected"),
                 };
@@ -136,32 +134,37 @@ impl App<Initialized> {
 }
 
 impl App<Running> {
-
     async fn retrieve_history(&mut self) {
         let one_day_in_secs = 60 * 60 * 24;
         let time_start = (Duration::from_secs(Utc::now().timestamp() as u64)
             - Duration::from_secs(one_day_in_secs))
-            .as_nanos() as u64;
+        .as_nanos() as u64;
 
         let include_data = true;
 
-        let messages = self.waku.store_query(None,
-                            vec![TOY_CHAT_CONTENT_TOPIC.clone()],
-                            STORE_NODE,
-                            include_data,
-                            Some(time_start),
-                            None,
-                            None).await.unwrap();
+        let messages = self
+            .waku
+            .store_query(
+                None,
+                vec![TOY_CHAT_CONTENT_TOPIC.clone()],
+                STORE_NODE,
+                include_data,
+                Some(time_start),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
 
         let messages: Vec<_> = messages
-                            .into_iter()
-                            // we expect messages because the query was passed with include_data == true
-                            .filter(|item| item.message.is_some())
-                            .map(|store_resp_msg| {
-                                <Chat2Message as Message>::decode(store_resp_msg.message.unwrap().payload())
-                                    .expect("Toy chat messages should be decodeable")
-                            })
-                            .collect();
+            .into_iter()
+            // we expect messages because the query was passed with include_data == true
+            .filter(|item| item.message.is_some())
+            .map(|store_resp_msg| {
+                <Chat2Message as Message>::decode(store_resp_msg.message.unwrap().payload())
+                    .expect("Toy chat messages should be decodeable")
+            })
+            .collect();
 
         if !messages.is_empty() {
             *self.messages.write().unwrap() = messages;
@@ -211,14 +214,18 @@ impl App<Running> {
                                     handle.block_on(async {
                                         // Assuming `self` is available in the current context
                                         let pubsub_topic = PubsubTopic::new(DEFAULT_PUBSUB_TOPIC);
-                                                if let Err(e) = self.waku.relay_publish_message(
-                                                    &waku_message,
-                                                    &pubsub_topic,
-                                                    None,
-                                                ).await {
-                                                    let mut out = std::io::stderr();
-                                                    write!(out, "{e:?}").unwrap();
-                                                }
+                                        if let Err(e) = self
+                                            .waku
+                                            .relay_publish_message(
+                                                &waku_message,
+                                                &pubsub_topic,
+                                                None,
+                                            )
+                                            .await
+                                        {
+                                            let mut out = std::io::stderr();
+                                            write!(out, "{e:?}").unwrap();
+                                        }
                                     });
                                 });
                             }
@@ -240,7 +247,10 @@ impl App<Running> {
     }
 
     async fn stop_app(self) {
-        self.waku.stop().await.expect("the node should stop properly");
+        self.waku
+            .stop()
+            .await
+            .expect("the node should stop properly");
     }
 }
 
@@ -251,6 +261,12 @@ async fn main() -> std::result::Result<(), Box<dyn Error>> {
     let app = App::new(nick).await?;
     let mut app = app.start_waku_node().await?;
 
+    // Redirect stderr to /dev/null so nwaku discovery/LSQUIC logs don't corrupt the TUI
+    let devnull = std::fs::OpenOptions::new().write(true).open("/dev/null")?;
+    unsafe {
+        libc::dup2(devnull.into_raw_fd(), 2);
+    }
+
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -258,7 +274,12 @@ async fn main() -> std::result::Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    app.retrieve_history().await;
+    // Fetch history in the background so the TUI starts immediately
+    tokio::spawn(async move {
+        // small delay so the node has time to connect to peers before querying
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    });
+
     let res = app.run_main_loop(&mut terminal);
     app.stop_app().await;
 

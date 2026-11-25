@@ -28,8 +28,12 @@ pub struct WakuNodeConfig {
     #[default(Some(true))]
     pub relay: Option<bool>,
     pub relay_topics: Vec<String>,
-    #[default(vec![1])]
+    #[default(vec![0])]
     pub shards: Vec<usize>,
+    /// Number of shards in the network (for auto-sharding). Shard indices must be < this value.
+    /// Default 8. Must be > max(shards).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_shards_in_network: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_message_size: Option<String>,
 

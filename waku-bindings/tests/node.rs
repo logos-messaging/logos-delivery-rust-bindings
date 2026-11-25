@@ -58,6 +58,9 @@ async fn test_echo_messages(
                 WakuEvent::ConnectionChange(_evt) => {
                     // dbg!("Conn change evt", evt);
                 }
+                WakuEvent::NodeHealthChange(_evt) => {
+                    // dbg!("Node health change evt", evt);
+                }
                 WakuEvent::Unrecognized(err) => panic!("Unrecognized waku event: {:?}", err),
                 _ => panic!("event case not expected"),
             };
