@@ -16,6 +16,17 @@
 
 Rust layer on top of [`logos-messaging-nim`](https://github.com/logos-messaging/logos-messaging-nim) [C FFI bindings](https://github.com/logos-messaging/logos-messaging-nim/blob/master/library/libwaku.h).
 
+# How to build and run the toy-chat example
+
+- After cloning the repo run `git submodule update --init --recursive` to init all submodules.
+- Run the command `cargo build` to build the bindings
+- To run the toy-chat example
+
+  ```
+  cd examples/toy-chat
+  cargo run <name>
+  ```
+
 
 ## About Waku
 
